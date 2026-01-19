@@ -34,7 +34,7 @@
     let gameStarted = false;
     let timer = 0;
     const startCountdownTime = 5;
-    const turnDuration = 5;
+    const turnDuration = 10;
     let timerInterval;
     let pollInterval;
     let currentTurn = 0;
@@ -62,11 +62,7 @@
         createCanvas(windowWidth, windowHeight);
         resetGameState();
         createLogoutButton();
-
-        // CHARGEMENT INITIAL : On récupère les joueurs déjà présents
         loadPlayers();
-
-        // POLLING : On vérifie toutes les 2s si la table a changé
         pollInterval = setInterval(loadPlayers, 2000);
     }
 
@@ -75,7 +71,9 @@
         timer = 0;
         currentTurn = 0;
         if(timerInterval) clearInterval(timerInterval);
-        for(let i=0;i<nPlayers;i++) playerData[i]={name:"",chips:0,active:false};
+        for(let i=0;i<nPlayers;i++) {
+            playerData[i] = {name:"", chips:0, active:false};
+        }
         initButtons();
     }
 
@@ -88,7 +86,6 @@
             let btn = createButton("Join");
             btn.size(100,30);
             btn.position(p.x+avatarW/2-50,p.y+avatarH+10);
-            // On cache le bouton si un joueur est déjà là
             if(playerData[i] && playerData[i].active) btn.hide();
             btn.mousePressed(()=>joinPlayer(i));
             buttons.push(btn);
@@ -102,15 +99,32 @@
 
             let countBefore = playerData.filter(p => p.active).length;
 
+            // --- CORRECTION : RESET LOCAL AVANT MISE À JOUR ---
+            // On remet tout le monde en inactif pour voir qui est encore là vraiment
+            for(let i=0; i<nPlayers; i++) playerData[i].active = false;
+
             game.players.forEach((p, i) => {
                 if(i < nPlayers){
                     playerData[i] = { name: p.name, chips: p.chips, active: true };
-                    if(buttons[i]) buttons[i].hide();
                 }
             });
 
-            // Si on vient de passer à 2 joueurs, on lance le compte à rebours
+            // Afficher/Cacher les boutons selon l'état réel de la DB
+            for(let i=0; i<nPlayers; i++){
+                if(playerData[i].active) buttons[i].hide();
+                else buttons[i].show();
+            }
+
             let countAfter = playerData.filter(p => p.active).length;
+
+            // Si un joueur est parti (on passe de 2 à 1)
+            if(gameStarted && countAfter < 2) {
+                console.log("Player disconnected, resetting game...");
+                resetGameState();
+                return; // On arrête là pour ce cycle
+            }
+
+            // Si on vient de passer à 2 joueurs, on lance le compte à rebours
             if(!gameStarted && countAfter === 2 && countBefore < 2){
                 startCountdown(startCountdownTime, () => {
                     gameStarted = true;
@@ -132,10 +146,6 @@
                 },
                 body: JSON.stringify({name})
             });
-            const data = await res.json();
-            if(!res.ok){ alert(data.error); return; }
-
-            // Rechargement immédiat après avoir rejoint
             await loadPlayers();
         }catch(e){console.error(e); alert("Server error");}
     }
@@ -162,6 +172,7 @@
     }
 
     function nextTurn(){
+        if(!gameStarted) return;
         currentTurn = (currentTurn + 1) % nPlayers;
         startCountdown(turnDuration, nextTurn);
     }
@@ -190,27 +201,27 @@
         ellipse(cx,cy,tableW,tableH);
         pop();
 
-        // Cards
-        fill(255, 50); noStroke();
+        // Cards Placeholder
+        fill(255, 30); noStroke();
         for(let i=0;i<5;i++) rect(cx-165+i*70,cy-40,55,80,5);
 
         // Players
         if(window.playersPos){
             window.playersPos.forEach((p,i)=>{
-                // HIGHLIGHT TOUR ACTIF
-                if(gameStarted && i === currentTurn){
-                    push();
-                    noFill();
-                    let glow = 10 + sin(frameCount * 0.1) * 5;
-                    strokeWeight(glow);
-                    stroke(255, 215, 0, 150);
-                    rect(p.x - 5, p.y - 5, avatarW + 10, avatarH + 10, 15);
-                    pop();
-                }
-
                 if(imgPlayer) image(imgPlayer,p.x,p.y,avatarW,avatarH);
 
                 if(playerData[i] && playerData[i].active){
+                    // Highlight Tour
+                    if(gameStarted && i === currentTurn){
+                        push();
+                        noFill();
+                        let glow = 10 + sin(frameCount * 0.1) * 5;
+                        strokeWeight(glow);
+                        stroke(255, 215, 0, 150);
+                        rect(p.x - 5, p.y - 5, avatarW + 10, avatarH + 10, 15);
+                        pop();
+                    }
+
                     textAlign(CENTER);
                     let textY = Math.sin(p.angle)>0?p.y+avatarH+15:p.y-35;
                     fill(gameStarted && i === currentTurn ? "#FFD700" : "rgba(0,0,0,0.8)");
@@ -228,13 +239,18 @@
         fill(255); textSize(22); textAlign(CENTER);
         text("POT: 0 $",cx,cy+85);
 
-        if(!gameStarted && playerData.filter(p=>p.active).length===2){
-            fill("#FFD700");
-            text("Game starts in: "+timer+"s",cx,50);
-        } else if(gameStarted){
+        if(!gameStarted){
+            if(playerData.filter(p=>p.active).length === 2){
+                fill("#FFD700");
+                text("Game starts in: "+timer+"s",cx,50);
+            } else {
+                fill(255, 150);
+                text("Waiting for players (1/2)...", cx, 50);
+            }
+        } else {
             fill(255);
-            let activeName = playerData[currentTurn].name;
-            text("Turn: " + activeName + " (" + timer + "s)", cx, 50);
+            let name = playerData[currentTurn].name || "P"+(currentTurn+1);
+            text("Turn: " + name + " (" + timer + "s)", cx, 50);
         }
     }
 
