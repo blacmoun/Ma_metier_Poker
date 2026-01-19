@@ -60,7 +60,6 @@
 
     function setup(){
         createCanvas(windowWidth, windowHeight);
-        // Initialisation propre
         for(let i=0;i<nPlayers;i++) playerData[i] = {name:"", chips:0, active:false};
         initButtons();
         createLogoutButton();
@@ -69,7 +68,6 @@
         pollInterval = setInterval(loadPlayers, 2000);
     }
 
-    // Réinitialise tout l'état de la table localement
     function resetGameState() {
         gameStarted = false;
         timer = 0;
@@ -78,9 +76,7 @@
 
         for(let i=0; i<nPlayers; i++) {
             playerData[i] = {name:"", chips:0, active:false};
-            if(buttons[i]) {
-                buttons[i].show(); // Force la réapparition des boutons Join
-            }
+            if(buttons[i]) buttons[i].show();
         }
     }
 
@@ -102,13 +98,9 @@
         try{
             const res = await fetch("/game");
             const game = await res.json();
-
             let countBefore = playerData.filter(p => p.active).length;
-
-            // Mise à jour de l'état des joueurs
             let playersInServer = game.players || [];
 
-            // On reset l'activité pour synchroniser avec le serveur
             for(let i=0; i<nPlayers; i++) playerData[i].active = false;
 
             playersInServer.forEach((p, i) => {
@@ -117,23 +109,17 @@
                 }
             });
 
-            // GESTION DES BOUTONS ET DU JEU
             for(let i=0; i<nPlayers; i++){
-                if(playerData[i].active) {
-                    buttons[i].hide();
-                } else {
-                    buttons[i].show();
-                }
+                if(playerData[i].active) buttons[i].hide();
+                else buttons[i].show();
             }
 
             let countAfter = playerData.filter(p => p.active).length;
 
-            // Si quelqu'un a quitté pendant la partie
             if(gameStarted && countAfter < 2) {
                 resetGameState();
             }
 
-            // Si on passe à 2 joueurs, on démarre le décompte
             if(!gameStarted && countAfter === 2 && countBefore < 2){
                 startCountdown(startCountdownTime, () => {
                     gameStarted = true;
@@ -146,6 +132,15 @@
     async function joinPlayer(index){
         let name = prompt("Enter your name:");
         if(!name||name.trim()==="") return;
+
+        // --- VERIFICATION CLIENT ---
+        // On vérifie si ce nom est déjà à table
+        let exists = playerData.find(p => p.name.toLowerCase() === name.toLowerCase());
+        if(exists) {
+            alert("This player is already at the table!");
+            return;
+        }
+
         try {
             const res = await fetch("/join",{
                 method:"POST",
@@ -155,8 +150,20 @@
                 },
                 body: JSON.stringify({name})
             });
+
+            const data = await res.json();
+
+            // Si le serveur renvoie une erreur (déjà inscrit, etc.)
+            if(!res.ok) {
+                alert(data.error || "Could not join the table.");
+                return;
+            }
+
             await loadPlayers();
-        } catch(e) { console.error(e); }
+        } catch(e) {
+            console.error(e);
+            alert("Server connection error.");
+        }
     }
 
     function createLogoutButton(){
@@ -165,7 +172,6 @@
         logoutBtn.position(20, 20);
         logoutBtn.size(100,30);
         logoutBtn.mousePressed(async ()=>{
-            // 1. On arrête immédiatement le polling pour éviter les conflits
             if(pollInterval) clearInterval(pollInterval);
 
             try {
@@ -173,11 +179,7 @@
                     method:"POST",
                     headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}
                 });
-
-                // 2. On remet tout à zéro localement
                 resetGameState();
-
-                // 3. On relance le polling après un court instant pour voir la table vide
                 setTimeout(() => {
                     pollInterval = setInterval(loadPlayers, 2000);
                 }, 500);
