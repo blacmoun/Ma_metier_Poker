@@ -13,20 +13,30 @@ class GameController extends Controller
     {
         $request->validate(['name' => 'required|string|max:50']);
 
-        // Get or create a single game
+        // Récupère ou crée la partie unique
         $game = Game::firstOrCreate([], ['status' => 'waiting']);
 
-        // Check if game is full (2 players max)
+        // 1. Vérification : L'utilisateur est-il déjà assis (via session) ?
+        if (session()->has('player_token')) {
+            $alreadySeated = Player::where('session_token', session('player_token'))
+                ->where('game_id', $game->id)
+                ->exists();
+            if ($alreadySeated) {
+                return response()->json(['error' => 'You are already at the table!'], 403);
+            }
+        }
+
+        // 2. Vérification : La table est-elle pleine ?
         if ($game->players()->count() >= 2) {
             return response()->json(['error' => 'Game is full'], 403);
         }
 
-        // Check if name already taken
+        // 3. Vérification : Le nom est-il déjà pris ?
         if ($game->players()->where('name', $request->name)->exists()) {
             return response()->json(['error' => 'Name already taken'], 403);
         }
 
-        // Create player with session token
+        // Création du joueur
         $token = Str::random(32);
         $player = $game->players()->create([
             'name' => $request->name,
@@ -34,18 +44,42 @@ class GameController extends Controller
             'session_token' => $token
         ]);
 
-        // Save session
+        // Sauvegarde du token en session PHP
         session(['player_token' => $token]);
 
         return response()->json([
-            'message' => 'Joined',
+            'message' => 'Joined successfully',
             'player' => $player
         ]);
     }
 
     public function show()
     {
+        // On récupère le jeu, les joueurs, et on ajoute un indicateur "me"
         $game = Game::with('players')->first();
-        return response()->json($game);
+        $myToken = session('player_token');
+
+        // On transforme la réponse pour que le JS sache si l'utilisateur actuel est à table
+        $players = $game ? $game->players->map(function($p) use ($myToken) {
+            return [
+                'name' => $p->name,
+                'chips' => $p->chips,
+                'is_me' => ($p->session_token === $myToken)
+            ];
+        }) : [];
+
+        return response()->json([
+            'players' => $players,
+            'status' => $game->status ?? 'waiting'
+        ]);
+    }
+
+    public function logout()
+    {
+        if (session()->has('player_token')) {
+            Player::where('session_token', session('player_token'))->delete();
+            session()->forget('player_token');
+        }
+        return response()->json(['message' => 'Logged out']);
     }
 }
