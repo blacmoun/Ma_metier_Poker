@@ -5,10 +5,6 @@
     <title>Interface Poker Pro - Clean</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #073870; }
         button {
@@ -22,34 +18,18 @@
             cursor: pointer;
         }
         button:hover { background: #FFD700; color: #000; }
-
-        /* ZONE P5 = 60% HAUT */
-        #p5-zone {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 60%;
-            height: 60vh;
-            z-index: 0;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
-
-<!-- ZONE DU CANVAS P5 (60% HAUT) -->
-<div id="p5-zone"></div>
-
 <script>
     let imgjoueur;
     let boutons = [];
     let playerData = [];
-    let difx = 150;
     const nPlayers = 9;
-    const avatarW = 75;
-    const avatarH = 100;
-    const tableW = 525;
-    const tableH = 250;
+    const avatarW = 100;
+    const avatarH = 125;
+    const tableW = 900;
+    const tableH = 400;
 
     function preload() {
         imgjoueur = loadImage("/img/joueur.png");
@@ -57,11 +37,10 @@
 
     function calculatePositions() {
         let positions = [];
-        let cx = width / 2 ;
-        let cy = height / 2 -difx;
+        let cx = width / 2;
+        let cy = height / 2;
         let rx = tableW * 0.52;
-        let ry = tableH * 0.52;
-
+        let ry = tableH * 0.55;
 
         for (let i = 0; i < nPlayers; i++) {
             let angle = -Math.PI/2 + i * (2 * Math.PI / nPlayers);
@@ -73,13 +52,9 @@
     }
 
     function setup() {
-        let canvas = createCanvas(windowWidth, windowHeight);
-        canvas.parent("p5-zone");
-        canvas.style('position', 'absolute');
-        canvas.style('top', '0');
-        canvas.style('left', '0');
-        canvas.style('z-index', '0');
+        createCanvas(windowWidth, windowHeight);
 
+        // Initialisation des données joueurs si vide
         for(let i=0; i<nPlayers; i++) {
             playerData[i] = { name: "", chips: 0, active: false };
         }
@@ -88,6 +63,7 @@
     }
 
     function initButtons() {
+        // Supprimer les anciens boutons si redimensionnement
         boutons.forEach(b => b.remove());
         boutons = [];
 
@@ -97,10 +73,12 @@
         positions.forEach((j, i) => {
             let btn = createButton("Rejoindre");
             btn.size(100, 30);
-            btn.position(j.x + avatarW/2 - 50, j.y + avatarH - 100);
-            btn.style('z-index', '2');
+            btn.position(j.x + avatarW/2 - 50, j.y + avatarH + 10);
 
-            if (playerData[i].active) btn.hide();
+            // Si la place est déjà prise, on cache le bouton immédiatement
+            if (playerData[i].active) {
+                btn.hide();
+            }
 
             btn.mousePressed(() => inscrireJoueur(i));
             boutons.push(btn);
@@ -113,8 +91,11 @@
             playerData[index].name = nom;
             playerData[index].chips = 1000;
             playerData[index].active = true;
+
+            // CACHE LE BOUTON
             boutons[index].hide();
 
+            // Envoi au serveur
             try {
                 await fetch("{{ url('/players') }}", {
                     method: "POST",
@@ -131,53 +112,61 @@
     function draw() {
         background("#073870");
         let cx = width / 2;
-        let cy = height / 2 -difx;
+        let cy = height / 2;
 
+        // --- DESSIN TABLE ---
         push();
         stroke("#3e2003");
         strokeWeight(8);
-        fill("#b45f06");
+        fill("#b45f06"); // Bordure bois
         ellipse(cx, cy, tableW + 40, tableH + 40);
 
-        fill("#1b5e20");
+        fill("#1b5e20"); // Tapis vert
         stroke("#144417");
         strokeWeight(4);
         ellipse(cx, cy, tableW, tableH);
 
-        noFill();
+        noFill(); // Ligne déco
         stroke(255, 20);
         ellipse(cx, cy, tableW - 60, tableH - 60);
         pop();
 
+        // --- CARTES ---
         fill(255);
         noStroke();
         for(let i=0; i<5; i++){
             rect(cx - 165 + i*70, cy - 40, 55, 80, 5);
         }
 
+        // --- JOUEURS ---
         window.joueurs.forEach((j, i) => {
+            // Dessiner l'avatar
             image(imgjoueur, j.x, j.y, avatarW, avatarH);
 
+            // Afficher infos seulement si la place est prise
             if (playerData[i].active) {
                 textAlign(CENTER);
                 let isBottom = Math.sin(j.angle) > 0;
                 let textY = isBottom ? j.y + avatarH + 15 : j.y - 35;
 
+                // Fond du texte
                 fill(0, 180);
                 rect(j.x - 10, textY, avatarW + 20, 45, 8);
 
+                // Nom et Jetons
                 fill(255);
                 textSize(14);
                 text(playerData[i].name, j.x + avatarW/2, textY + 20);
                 fill("#FFD700");
-                text(playerData[i].chips + " *", j.x + avatarW/2, textY + 38);
+                text(playerData[i].chips + " $", j.x + avatarW/2, textY + 38);
             }
         });
 
+        // Pot
         fill(255);
         textSize(22);
         textAlign(CENTER);
-        text("POT: 0 *", cx, cy + 85);
+        text("POT: 0 $", cx, cy + 85);
     }
 
     function windowResized() {
@@ -185,54 +174,5 @@
         initButtons();
     }
 </script>
-
-<!-- MENU BOOTSTRAP = 40% BAS -->
-<div class="container-fluid navbar-dark"
-     style="position: fixed; bottom: 0; left: 0; width: 100%;
-            height: 40vh;
-            background: rgba(0,0,0,0.55);
-            z-index: 1; overflow-y: auto;">
-
-    <!-- Menu du bas -->
-    <ul class="nav nav-tabs mb-3" id="menuTabs">
-        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Cartes</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#info">Info</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#history">Historique</button></li>
-    </ul>
-
-    <div class="row">
-        <div class="col-md-6">
-            <div class="tab-content border bg-white p-3" style="height:200px;">
-                <div class="tab-pane fade show active" id="cards"><textarea class="form-control" placeholder="Zone Cartes"></textarea></div>
-                <div class="tab-pane fade" id="info"><textarea class="form-control" placeholder="Zone info"></textarea></div>
-                <div class="tab-pane fade" id="stats"><textarea class="form-control" placeholder="Zone Stats"></textarea></div>
-                <div class="tab-pane fade" id="history"><textarea class="form-control" placeholder="Zone Historique"></textarea></div>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="d-flex justify-content-start gap-2 mb-3">
-                <button class="btn btn-dark">Jouer</button>
-                <button class="btn btn-dark">Quitter</button>
-                <button class="btn btn-dark">Miser</button>
-                <button class="btn btn-danger">Se coucher</button>
-            </div>
-
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <span class="fw-bold">* : 1000</span>
-                <input type="text" class="form-control w-50" placeholder="*=">
-            </div>
-
-            <div class="row g-2">
-                <div class="col-6"><button class="btn btn-dark w-100">10</button></div>
-                <div class="col-6"><button class="btn btn-dark w-100">100</button></div>
-                <div class="col-6"><button class="btn btn-dark w-100">1</button></div>
-                <div class="col-6"><button class="btn btn-dark w-100">All In</button></div>
-            </div>
-        </div>
-    </div>
-</div>
-
 </body>
 </html>

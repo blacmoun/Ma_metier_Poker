@@ -13,8 +13,12 @@ return new class extends Migration
     {
         Schema::create('players', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->integer('chips');
+            $table->string('name')->unique();
+            $table->integer('chips')->default(1000);
+            $table->foreignId('game_id')->nullable()->constrained()->onDelete('cascade');
+            $table->string('session_token', 64)->nullable()->unique();
+            $table->timestamp('last_activity')->nullable();
+            $table->timestamps();
         });
     }
 
