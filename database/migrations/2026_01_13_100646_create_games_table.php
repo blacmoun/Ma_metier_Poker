@@ -13,10 +13,9 @@ return new class extends Migration
     {
         Schema::create('games', function (Blueprint $table) {
             $table->id();
-            $table->string('type');
-            $table->decimal('minimum_bet', total: 8, places: 2);
-            $table->string('status');
-            $table->foreignId('player_id');
+            $table->string('name')->nullable();
+            $table->string('status')->default('waiting'); // waiting | started | finished
+            $table->timestamps();
         });
     }
 

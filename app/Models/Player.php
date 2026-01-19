@@ -8,14 +8,18 @@ use Illuminate\Database\Eloquent\Model;
 class Player extends Model
 {
     use HasFactory;
-    public $timestamps = false;
+    protected $fillable = [
+        'name',
+        'chips',
+        'game_id',
+        'session_token',
+        'last_activity'
+    ];
 
-    protected $fillable = ['name', 'chips'];
-
+    protected $hidden = ['session_token'];
 
     public function game()
     {
         return $this->belongsTo(Game::class);
     }
-
 }
