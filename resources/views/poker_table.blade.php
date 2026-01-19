@@ -60,21 +60,28 @@
 
     function setup(){
         createCanvas(windowWidth, windowHeight);
-        resetGameState();
+        // Initialisation propre
+        for(let i=0;i<nPlayers;i++) playerData[i] = {name:"", chips:0, active:false};
+        initButtons();
         createLogoutButton();
+
         loadPlayers();
         pollInterval = setInterval(loadPlayers, 2000);
     }
 
+    // Réinitialise tout l'état de la table localement
     function resetGameState() {
         gameStarted = false;
         timer = 0;
         currentTurn = 0;
         if(timerInterval) clearInterval(timerInterval);
-        for(let i=0;i<nPlayers;i++) {
+
+        for(let i=0; i<nPlayers; i++) {
             playerData[i] = {name:"", chips:0, active:false};
+            if(buttons[i]) {
+                buttons[i].show(); // Force la réapparition des boutons Join
+            }
         }
-        initButtons();
     }
 
     function initButtons(){
@@ -86,7 +93,6 @@
             let btn = createButton("Join");
             btn.size(100,30);
             btn.position(p.x+avatarW/2-50,p.y+avatarH+10);
-            if(playerData[i] && playerData[i].active) btn.hide();
             btn.mousePressed(()=>joinPlayer(i));
             buttons.push(btn);
         });
@@ -99,32 +105,35 @@
 
             let countBefore = playerData.filter(p => p.active).length;
 
-            // --- CORRECTION : RESET LOCAL AVANT MISE À JOUR ---
-            // On remet tout le monde en inactif pour voir qui est encore là vraiment
+            // Mise à jour de l'état des joueurs
+            let playersInServer = game.players || [];
+
+            // On reset l'activité pour synchroniser avec le serveur
             for(let i=0; i<nPlayers; i++) playerData[i].active = false;
 
-            game.players.forEach((p, i) => {
+            playersInServer.forEach((p, i) => {
                 if(i < nPlayers){
                     playerData[i] = { name: p.name, chips: p.chips, active: true };
                 }
             });
 
-            // Afficher/Cacher les boutons selon l'état réel de la DB
+            // GESTION DES BOUTONS ET DU JEU
             for(let i=0; i<nPlayers; i++){
-                if(playerData[i].active) buttons[i].hide();
-                else buttons[i].show();
+                if(playerData[i].active) {
+                    buttons[i].hide();
+                } else {
+                    buttons[i].show();
+                }
             }
 
             let countAfter = playerData.filter(p => p.active).length;
 
-            // Si un joueur est parti (on passe de 2 à 1)
+            // Si quelqu'un a quitté pendant la partie
             if(gameStarted && countAfter < 2) {
-                console.log("Player disconnected, resetting game...");
                 resetGameState();
-                return; // On arrête là pour ce cycle
             }
 
-            // Si on vient de passer à 2 joueurs, on lance le compte à rebours
+            // Si on passe à 2 joueurs, on démarre le décompte
             if(!gameStarted && countAfter === 2 && countBefore < 2){
                 startCountdown(startCountdownTime, () => {
                     gameStarted = true;
@@ -137,7 +146,7 @@
     async function joinPlayer(index){
         let name = prompt("Enter your name:");
         if(!name||name.trim()==="") return;
-        try{
+        try {
             const res = await fetch("/join",{
                 method:"POST",
                 headers:{
@@ -147,7 +156,7 @@
                 body: JSON.stringify({name})
             });
             await loadPlayers();
-        }catch(e){console.error(e); alert("Server error");}
+        } catch(e) { console.error(e); }
     }
 
     function createLogoutButton(){
@@ -156,13 +165,27 @@
         logoutBtn.position(20, 20);
         logoutBtn.size(100,30);
         logoutBtn.mousePressed(async ()=>{
-            try{
+            // 1. On arrête immédiatement le polling pour éviter les conflits
+            if(pollInterval) clearInterval(pollInterval);
+
+            try {
                 await fetch("/logout",{
                     method:"POST",
                     headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}
                 });
+
+                // 2. On remet tout à zéro localement
                 resetGameState();
-            }catch(e){ console.error(e); }
+
+                // 3. On relance le polling après un court instant pour voir la table vide
+                setTimeout(() => {
+                    pollInterval = setInterval(loadPlayers, 2000);
+                }, 500);
+
+            } catch(e) {
+                console.error(e);
+                pollInterval = setInterval(loadPlayers, 2000);
+            }
         });
     }
 
@@ -211,7 +234,6 @@
                 if(imgPlayer) image(imgPlayer,p.x,p.y,avatarW,avatarH);
 
                 if(playerData[i] && playerData[i].active){
-                    // Highlight Tour
                     if(gameStarted && i === currentTurn){
                         push();
                         noFill();
@@ -235,17 +257,17 @@
             });
         }
 
-        // UI
         fill(255); textSize(22); textAlign(CENTER);
         text("POT: 0 $",cx,cy+85);
 
         if(!gameStarted){
-            if(playerData.filter(p=>p.active).length === 2){
+            let activeCount = playerData.filter(p=>p.active).length;
+            if(activeCount === 2){
                 fill("#FFD700");
                 text("Game starts in: "+timer+"s",cx,50);
             } else {
                 fill(255, 150);
-                text("Waiting for players (1/2)...", cx, 50);
+                text("Waiting for players ("+activeCount+"/2)...", cx, 50);
             }
         } else {
             fill(255);
