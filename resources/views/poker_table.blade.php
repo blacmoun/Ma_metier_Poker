@@ -25,11 +25,19 @@
     let buttons = [];
     let logoutBtn;
     let playerData = [];
-    const nPlayers = 2; // max 2 players
+    const nPlayers = 2;
     const avatarW = 100;
     const avatarH = 125;
     const tableW = 900;
     const tableH = 400;
+
+    let gameStarted = false;
+    let timer = 0;
+    const startCountdownTime = 5;
+    const turnDuration = 5;
+    let timerInterval;
+    let pollInterval;
+    let currentTurn = 0;
 
     function preload(){
         imgPlayer = loadImage("/img/joueur.png");
@@ -51,10 +59,24 @@
     }
 
     function setup(){
-        createCanvas(windowWidth,windowHeight);
+        createCanvas(windowWidth, windowHeight);
+        resetGameState();
+        createLogoutButton();
+
+        // CHARGEMENT INITIAL : On récupère les joueurs déjà présents
+        loadPlayers();
+
+        // POLLING : On vérifie toutes les 2s si la table a changé
+        pollInterval = setInterval(loadPlayers, 2000);
+    }
+
+    function resetGameState() {
+        gameStarted = false;
+        timer = 0;
+        currentTurn = 0;
+        if(timerInterval) clearInterval(timerInterval);
         for(let i=0;i<nPlayers;i++) playerData[i]={name:"",chips:0,active:false};
         initButtons();
-        loadPlayers();
     }
 
     function initButtons(){
@@ -66,7 +88,8 @@
             let btn = createButton("Join");
             btn.size(100,30);
             btn.position(p.x+avatarW/2-50,p.y+avatarH+10);
-            if(playerData[i].active) btn.hide();
+            // On cache le bouton si un joueur est déjà là
+            if(playerData[i] && playerData[i].active) btn.hide();
             btn.mousePressed(()=>joinPlayer(i));
             buttons.push(btn);
         });
@@ -76,19 +99,25 @@
         try{
             const res = await fetch("/game");
             const game = await res.json();
-            game.players.forEach((p,i)=>{
-                if(i<nPlayers){
-                    playerData[i]={name:p.name,chips:p.chips,active:true};
+
+            let countBefore = playerData.filter(p => p.active).length;
+
+            game.players.forEach((p, i) => {
+                if(i < nPlayers){
+                    playerData[i] = { name: p.name, chips: p.chips, active: true };
                     if(buttons[i]) buttons[i].hide();
-                    // If this player matches our session, show logout button
-                    @if(session('player_token'))
-                    if(p.session_token === "{{ session('player_token') }}"){
-                        createLogoutButton(i);
-                    }
-                    @endif
                 }
             });
-        }catch(e){console.error(e);}
+
+            // Si on vient de passer à 2 joueurs, on lance le compte à rebours
+            let countAfter = playerData.filter(p => p.active).length;
+            if(!gameStarted && countAfter === 2 && countBefore < 2){
+                startCountdown(startCountdownTime, () => {
+                    gameStarted = true;
+                    startTurnTimer();
+                });
+            }
+        }catch(e){ console.error("Update error:", e); }
     }
 
     async function joinPlayer(index){
@@ -106,49 +135,52 @@
             const data = await res.json();
             if(!res.ok){ alert(data.error); return; }
 
-            playerData[index]={name:data.player.name,chips:data.player.chips,active:true};
-            if(buttons[index]) buttons[index].hide();
-
-            // Show logout button for **current player**
-            createLogoutButton(index);
-
+            // Rechargement immédiat après avoir rejoint
+            await loadPlayers();
         }catch(e){console.error(e); alert("Server error");}
     }
 
-    // Only current player logout
-    function createLogoutButton(index){
-        // Remove previous button if exists
+    function createLogoutButton(){
         if(logoutBtn) logoutBtn.remove();
-
-        // Create button **on the left side** of the screen
         logoutBtn = createButton("Log Out");
-        logoutBtn.position(20, 50); // fixed left position
-        logoutBtn.size(100, 30);
+        logoutBtn.position(20, 20);
+        logoutBtn.size(100,30);
         logoutBtn.mousePressed(async ()=>{
             try{
-                const res = await fetch("/logout", {
-                    method: "POST",
-                    headers: {
-                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                    }
+                await fetch("/logout",{
+                    method:"POST",
+                    headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}
                 });
-                const data = await res.json();
-                console.log(data.message);
-
-                // Reset current player locally
-                playerData[index] = { name:"", chips:0, active:false };
-                initButtons(); // show join buttons
-                logoutBtn.remove(); // remove button from screen
-            }catch(e){
-                console.error(e);
-                alert("Logout failed");
-            }
+                resetGameState();
+            }catch(e){ console.error(e); }
         });
+    }
+
+    function startTurnTimer(){
+        currentTurn = 0;
+        startCountdown(turnDuration, nextTurn);
+    }
+
+    function nextTurn(){
+        currentTurn = (currentTurn + 1) % nPlayers;
+        startCountdown(turnDuration, nextTurn);
+    }
+
+    function startCountdown(seconds, callback){
+        timer = seconds;
+        if(timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(()=>{
+            timer--;
+            if(timer <= 0){
+                clearInterval(timerInterval);
+                callback();
+            }
+        }, 1000);
     }
 
     function draw(){
         background("#073870");
-        let cx=width/2, cy=height/2;
+        let cx = width/2, cy = height/2;
 
         // Table
         push();
@@ -156,29 +188,54 @@
         ellipse(cx,cy,tableW+40,tableH+40);
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4);
         ellipse(cx,cy,tableW,tableH);
-        noFill(); stroke(255,20); ellipse(cx,cy,tableW-60,tableH-60);
         pop();
 
         // Cards
-        fill(255); noStroke();
+        fill(255, 50); noStroke();
         for(let i=0;i<5;i++) rect(cx-165+i*70,cy-40,55,80,5);
 
         // Players
-        window.playersPos.forEach((p,i)=>{
-            image(imgPlayer,p.x,p.y,avatarW,avatarH);
-            if(playerData[i].active){
-                textAlign(CENTER);
-                let textY = Math.sin(p.angle)>0?p.y+avatarH+15:p.y-35;
-                fill(0,180); rect(p.x-10,textY,avatarW+20,45,8);
-                fill(255); textSize(14);
-                text(playerData[i].name,p.x+avatarW/2,textY+20);
-                fill("#FFD700"); text(playerData[i].chips+" $",p.x+avatarW/2,textY+38);
-            }
-        });
+        if(window.playersPos){
+            window.playersPos.forEach((p,i)=>{
+                // HIGHLIGHT TOUR ACTIF
+                if(gameStarted && i === currentTurn){
+                    push();
+                    noFill();
+                    let glow = 10 + sin(frameCount * 0.1) * 5;
+                    strokeWeight(glow);
+                    stroke(255, 215, 0, 150);
+                    rect(p.x - 5, p.y - 5, avatarW + 10, avatarH + 10, 15);
+                    pop();
+                }
 
-        // Pot
+                if(imgPlayer) image(imgPlayer,p.x,p.y,avatarW,avatarH);
+
+                if(playerData[i] && playerData[i].active){
+                    textAlign(CENTER);
+                    let textY = Math.sin(p.angle)>0?p.y+avatarH+15:p.y-35;
+                    fill(gameStarted && i === currentTurn ? "#FFD700" : "rgba(0,0,0,0.8)");
+                    rect(p.x-10,textY,avatarW+20,45,8);
+                    fill(gameStarted && i === currentTurn ? 0 : 255);
+                    textSize(14);
+                    text(playerData[i].name, p.x+avatarW/2, textY+20);
+                    fill(gameStarted && i === currentTurn ? 0 : "#FFD700");
+                    text(playerData[i].chips+" $", p.x+avatarW/2, textY+38);
+                }
+            });
+        }
+
+        // UI
         fill(255); textSize(22); textAlign(CENTER);
         text("POT: 0 $",cx,cy+85);
+
+        if(!gameStarted && playerData.filter(p=>p.active).length===2){
+            fill("#FFD700");
+            text("Game starts in: "+timer+"s",cx,50);
+        } else if(gameStarted){
+            fill(255);
+            let activeName = playerData[currentTurn].name;
+            text("Turn: " + activeName + " (" + timer + "s)", cx, 50);
+        }
     }
 
     function windowResized(){
