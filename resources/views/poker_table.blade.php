@@ -1,24 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Poker Table - J</title>
+    <title>Poker Pro - J Edition</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { margin:0; padding:0; overflow:hidden; background:#073870; font-family: 'Segoe UI', sans-serif; }
-        button {
-            font-family: 'Segoe UI', sans-serif;
-            background: rgba(17,17,17,0.8);
-            color:#FFD700;
-            border:1px solid #FFD700;
-            border-radius:4px;
-            font-weight:bold;
-            cursor:pointer;
-        }
-        button:hover { background:#FFD700; color:#000; }
 
-        /* Panneau Info Joueur Haut Droite */
+        /* ZONE JEU : S'adapte au menu */
+        #p5-zone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 0;
+        }
+
+        /* ZONE UI : Coulissante */
+        #ui-zone {
+            position: fixed;
+            bottom: -35vh;
+            left: 0;
+            width: 100%;
+            height: 35vh;
+            background: rgba(0, 0, 0, 0.95);
+            border-top: 2px solid #FFD700;
+            z-index: 10;
+            padding: 15px;
+            color: white;
+            transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* BOUTON FLÈCHE */
+        #toggle-menu {
+            position: absolute;
+            top: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 35px;
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid #FFD700;
+            border-bottom: none;
+            border-radius: 12px 12px 0 0;
+            color: #FFD700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 11;
+            font-size: 1.2rem;
+        }
+
+        body.menu-open #ui-zone { bottom: 0; }
+        body.menu-open #p5-zone { height: 65vh; }
+
+        button.p5-btn {
+            background: #FFD700;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
         #myInfo {
             position: absolute;
             top: 20px;
@@ -26,26 +76,66 @@
             background: rgba(0, 0, 0, 0.8);
             border: 2px solid #FFD700;
             border-radius: 8px;
-            padding: 15px;
+            padding: 10px;
             color: white;
             min-width: 150px;
             display: none;
             z-index: 100;
         }
-        #myInfo .label { color: #FFD700; font-size: 12px; text-transform: uppercase; }
-        #myInfo .val { font-size: 20px; font-weight: bold; display: block; margin-top: 5px; }
+
+        .nav-tabs .nav-link { color: #aaa; border: none; }
+        .nav-tabs .nav-link.active { background: #FFD700 !important; color: black !important; font-weight: bold; }
     </style>
 </head>
-<body>
+<body class="">
 
 <div id="myInfo">
-    <div class="label">Joueur</div>
-    <span id="myName" class="val">-</span>
-    <div class="label" style="margin-top:10px;">Solde</div>
-    <span id="myChips" class="val">0 J</span>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Joueur</div>
+    <span id="myName" style="font-size: 18px; font-weight: bold; display: block;">-</span>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase; margin-top:5px;">Solde</div>
+    <span id="myChips" style="font-size: 18px; font-weight: bold; display: block;">0 J</span>
 </div>
 
+<div id="p5-zone"></div>
+
+<div id="ui-zone">
+    <div id="toggle-menu" onclick="toggleMenu()">
+        <span id="arrow-icon">▲</span>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-6">
+                <ul class="nav nav-tabs mb-2" id="menuTabs">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Cartes</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
+                </ul>
+                <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
+                    <div class="tab-pane fade show active" id="cards">En attente de la distribution...</div>
+                    <div class="tab-pane fade" id="stats">Statistiques de session...</div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-outline-warning fw-bold flex-grow-1">SUIVRE</button>
+                    <button class="btn btn-outline-warning fw-bold flex-grow-1">MISER</button>
+                    <button class="btn btn-danger fw-bold flex-grow-1">SE COUCHER</button>
+                </div>
+                <div class="row g-2">
+                    <div class="col-3"><button class="btn btn-dark border-secondary w-100">X2</button></div>
+                    <div class="col-3"><button class="btn btn-dark border-secondary w-100">1/2 POT</button></div>
+                    <div class="col-3"><button class="btn btn-dark border-secondary w-100">POT</button></div>
+                    <div class="col-3"><button class="btn btn-warning w-100 fw-bold text-dark">ALL-IN</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+    let isMenuOpen = false;
     let imgPlayer;
     let buttons = [];
     let logoutBtn;
@@ -53,24 +143,29 @@
     const nPlayers = 2;
     const avatarW = 100;
     const avatarH = 125;
-    const tableW = 900;
-    const tableH = 400;
-
-    let gameStarted = false;
+    const tableW = 800;
+    const tableH = 350;
     let amISeated = false;
-    let timer = 0;
-    const startCountdownTime = 5;
-    const turnDuration = 10;
-    let timerInterval;
     let pollInterval;
-    let currentTurn = 0;
+
+    function toggleMenu() {
+        isMenuOpen = !isMenuOpen;
+        document.body.classList.toggle('menu-open');
+        document.getElementById('arrow-icon').innerText = isMenuOpen ? '▼' : '▲';
+
+        // On attend la fin de l'animation CSS pour recalculer les positions
+        setTimeout(() => {
+            initButtons();
+        }, 410);
+    }
 
     function preload(){
         imgPlayer = loadImage("/img/joueur.png");
     }
 
     function setup(){
-        createCanvas(windowWidth, windowHeight);
+        let canvas = createCanvas(windowWidth, windowHeight);
+        canvas.parent("p5-zone");
         resetGameState();
         createLogoutButton();
         loadPlayers();
@@ -78,44 +173,44 @@
     }
 
     function resetGameState() {
-        gameStarted = false;
         amISeated = false;
-        timer = 0;
-        currentTurn = 0;
-        if(timerInterval) clearInterval(timerInterval);
-        for(let i=0; i<nPlayers; i++) {
-            playerData[i] = {name:"", chips:0, active:false, isMe:false};
-        }
+        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false};
         document.getElementById('myInfo').style.display = 'none';
         initButtons();
     }
 
     function initButtons(){
-        buttons.forEach(b=>b.remove());
-        buttons=[];
-        let cx = width/2, cy = height/2;
+        buttons.forEach(b => b.remove());
+        buttons = [];
+
+        let currentH = document.getElementById('p5-zone').offsetHeight;
+        let cx = width/2;
+        let cy = currentH / 2;
         let rx = tableW*0.52, ry = tableH*0.55;
 
-        for(let i=0;i<nPlayers;i++){
-            let angle = -Math.PI/2 + i*(2*Math.PI/nPlayers);
+        for(let i=0; i<nPlayers; i++){
+            let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle) - avatarW/2;
             let y = cy + ry*Math.sin(angle) - avatarH/2;
 
             let btn = createButton("Rejoindre");
+            btn.addClass('p5-btn');
             btn.size(100,30);
             btn.position(x+avatarW/2-50, y+avatarH+10);
-            btn.mousePressed(()=>joinPlayer(i));
+            btn.mousePressed(() => joinPlayer(i));
+
+            // CACHE IMMÉDIATEMENT si déjà assis pour éviter le clignotement
+            if(amISeated || (playerData[i] && playerData[i].active)) btn.hide();
+
             buttons.push(btn);
         }
     }
 
     async function loadPlayers(){
-        try{
+        try {
             const res = await fetch("/game");
             const data = await res.json();
             let playersInServer = data.players || [];
-
-            let countBefore = playerData.filter(p => p.active).length;
 
             amISeated = false;
             for(let i=0; i<nPlayers; i++) playerData[i].active = false;
@@ -132,38 +227,24 @@
                 }
             });
 
-            for(let i=0; i<nPlayers; i++){
-                if(playerData[i].active || amISeated) buttons[i].hide();
-                else buttons[i].show();
-            }
-
-            let countAfter = playerData.filter(p => p.active).length;
-            if(gameStarted && countAfter < 2) resetGameState();
-
-            if(!gameStarted && countAfter === 2 && countBefore < 2){
-                startCountdown(startCountdownTime, () => {
-                    gameStarted = true;
-                    startTurnTimer();
-                });
-            }
-        }catch(e){ console.error("Update error:", e); }
+            // Mise à jour de la visibilité sans recréer les boutons
+            buttons.forEach((btn, i) => {
+                if(amISeated || playerData[i].active) btn.hide();
+                else btn.show();
+            });
+        } catch(e) { console.error(e); }
     }
 
     async function joinPlayer(index){
         if(amISeated) return;
         let name = prompt("Entrez votre nom :");
-        if(!name||name.trim()==="") return;
+        if(!name || name.trim()==="") return;
         try {
-            const res = await fetch("/join",{
+            await fetch("/join",{
                 method:"POST",
-                headers:{
-                    "Content-Type":"application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
+                headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},
                 body: JSON.stringify({name})
             });
-            const data = await res.json();
-            if(!res.ok) { alert(data.error); return; }
             await loadPlayers();
         } catch(e) { console.error(e); }
     }
@@ -171,49 +252,26 @@
     function createLogoutButton(){
         if(logoutBtn) logoutBtn.remove();
         logoutBtn = createButton("Quitter");
+        logoutBtn.addClass('p5-btn');
         logoutBtn.position(20, 20);
         logoutBtn.size(100,30);
+        logoutBtn.style('background', '#ff4444');
+        logoutBtn.style('color', 'white');
         logoutBtn.mousePressed(async ()=>{
-            if(pollInterval) clearInterval(pollInterval);
-            try {
-                await fetch("/logout",{
-                    method:"POST",
-                    headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}
-                });
-                resetGameState();
-                setTimeout(() => { pollInterval = setInterval(loadPlayers, 2000); }, 500);
-            } catch(e) {
-                console.error(e);
-                pollInterval = setInterval(loadPlayers, 2000);
-            }
+            await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
+            location.reload();
         });
     }
 
-    function startTurnTimer(){
-        currentTurn = 0;
-        startCountdown(turnDuration, nextTurn);
-    }
-
-    function nextTurn(){
-        if(!gameStarted) return;
-        currentTurn = (currentTurn + 1) % nPlayers;
-        startCountdown(turnDuration, nextTurn);
-    }
-
-    function startCountdown(seconds, callback){
-        timer = seconds;
-        if(timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(()=>{
-            timer--;
-            if(timer <= 0){ clearInterval(timerInterval); callback(); }
-        }, 1000);
-    }
-
     function draw(){
+        clear();
         background("#073870");
-        let cx = width/2, cy = height/2;
 
-        // Table
+        let currentH = document.getElementById('p5-zone').offsetHeight;
+        let cx = width/2;
+        let cy = currentH / 2;
+
+        // Dessin Table
         push();
         stroke("#3e2003"); strokeWeight(8); fill("#b45f06");
         ellipse(cx,cy,tableW+40,tableH+40);
@@ -221,62 +279,33 @@
         ellipse(cx,cy,tableW,tableH);
         pop();
 
-        // Cards Placeholder
-        fill(255, 30); noStroke();
-        for(let i=0;i<5;i++) rect(cx-165+i*70,cy-40,55,80,5);
-
-        // Positionnement joueurs
+        // Joueurs
         let rx = tableW*0.52, ry = tableH*0.55;
-
-        for(let i=0;i<nPlayers;i++){
-            let angle = -Math.PI/2 + i*(2*Math.PI/nPlayers);
+        for(let i=0; i<nPlayers; i++){
+            let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle) - avatarW/2;
             let y = cy + ry*Math.sin(angle) - avatarH/2;
 
             if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
 
             if(playerData[i] && playerData[i].active){
-                if(gameStarted && i === currentTurn){
-                    push(); noFill();
-                    let glow = 10 + sin(frameCount * 0.1) * 5;
-                    strokeWeight(glow); stroke(255, 215, 0, 150);
-                    rect(x - 5, y - 5, avatarW + 10, avatarH + 10, 15);
-                    pop();
-                }
-
                 textAlign(CENTER);
                 let textY = Math.sin(angle)>0?y+avatarH+15:y-35;
-
-                let boxColor = playerData[i].isMe ? "rgba(0, 100, 200, 0.8)" : "rgba(0,0,0,0.8)";
-                if(gameStarted && i === currentTurn) boxColor = "#FFD700";
-
-                fill(boxColor);
-                rect(x-10,textY,avatarW+20,45,8);
-
-                fill(gameStarted && i === currentTurn ? 0 : 255);
-                textSize(14);
+                fill(playerData[i].isMe ? "rgba(0, 100, 200, 0.9)" : "rgba(0,0,0,0.8)");
+                rect(x-15,textY,avatarW+30,45,8);
+                fill(255); textSize(12); textStyle(BOLD);
                 text(playerData[i].name, x+avatarW/2, textY+20);
-
-                fill(gameStarted && i === currentTurn ? 0 : "#FFD700");
+                fill("#FFD700");
                 text(playerData[i].chips + " J", x+avatarW/2, textY+38);
             }
         }
 
-        fill(255); textSize(22); textAlign(CENTER);
-        text("POT: 0 J",cx,cy+85);
-
-        if(!gameStarted){
-            let activeCount = playerData.filter(p=>p.active).length;
-            if(activeCount === 2) { fill("#FFD700"); text("Début dans : "+timer+"s",cx,50); }
-            else { fill(255, 150); text("Attente joueurs ("+activeCount+"/2)...", cx, 50); }
-        } else {
-            fill(255);
-            text("Tour : " + playerData[currentTurn].name + " (" + timer + "s)", cx, 50);
-        }
+        fill(255); textSize(20); textAlign(CENTER);
+        text("POT: 0 J", cx, cy + 15);
     }
 
     function windowResized(){
-        resizeCanvas(windowWidth,windowHeight);
+        resizeCanvas(windowWidth, windowHeight);
         initButtons();
     }
 </script>
