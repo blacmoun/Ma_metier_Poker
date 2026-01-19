@@ -13,8 +13,9 @@ return new class extends Migration
     {
         Schema::create('games', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->nullable();
-            $table->string('status')->default('waiting'); // waiting | started | finished
+            $table->string('status')->default('waiting');
+            $table->timestamp('timer_at')->nullable();
+            $table->integer('current_turn')->default(0);
             $table->timestamps();
         });
     }
