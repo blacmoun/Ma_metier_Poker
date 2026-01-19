@@ -8,46 +8,13 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { margin:0; padding:0; overflow:hidden; background:#073870; font-family: 'Segoe UI', sans-serif; }
-
-        #p5-zone {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100vh;
-            transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 0;
-        }
-
-        #ui-zone {
-            position: fixed;
-            bottom: -35vh; left: 0; width: 100%; height: 35vh;
-            background: rgba(0, 0, 0, 0.95);
-            border-top: 2px solid #FFD700;
-            z-index: 10; padding: 15px; color: white;
-            transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        #toggle-menu {
-            position: absolute; top: -35px; left: 50%; transform: translateX(-50%);
-            width: 80px; height: 35px; background: rgba(0, 0, 0, 0.95);
-            border: 2px solid #FFD700; border-bottom: none; border-radius: 12px 12px 0 0;
-            color: #FFD700; display: flex; align-items: center; justify-content: center;
-            cursor: pointer; z-index: 11; font-size: 1.2rem;
-        }
-
+        #p5-zone { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 0; }
+        #ui-zone { position: fixed; bottom: -35vh; left: 0; width: 100%; height: 35vh; background: rgba(0, 0, 0, 0.95); border-top: 2px solid #FFD700; z-index: 10; padding: 15px; color: white; transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        #toggle-menu { position: absolute; top: -35px; left: 50%; transform: translateX(-50%); width: 80px; height: 35px; background: rgba(0, 0, 0, 0.95); border: 2px solid #FFD700; border-bottom: none; border-radius: 12px 12px 0 0; color: #FFD700; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 11; font-size: 1.2rem; }
         body.menu-open #ui-zone { bottom: 0; }
         body.menu-open #p5-zone { height: 65vh; }
-
-        button.p5-btn {
-            background: #FFD700; color: #000; border: none; border-radius: 4px;
-            font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
-
-        #myInfo {
-            position: absolute; top: 20px; right: 20px;
-            background: rgba(0, 0, 0, 0.8); border: 2px solid #FFD700;
-            border-radius: 8px; padding: 10px; color: white; min-width: 150px;
-            display: none; z-index: 100;
-        }
-
+        button.p5-btn { background: #FFD700; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        #myInfo { position: absolute; top: 20px; right: 20px; background: rgba(0, 0, 0, 0.8); border: 2px solid #FFD700; border-radius: 8px; padding: 10px; color: white; min-width: 150px; display: none; z-index: 100; }
         .nav-tabs .nav-link { color: #aaa; border: none; }
         .nav-tabs .nav-link.active { background: #FFD700 !important; color: black !important; font-weight: bold; }
     </style>
@@ -105,14 +72,17 @@
     const nPlayers = 2;
     const avatarW = 100, avatarH = 125, tableW = 800, tableH = 350;
 
-    // VARIABLES DU TIMER
+    // VARIABLES SYNCHRONISÉES
     let gameStarted = false;
     let amISeated = false;
     let timer = 0;
-    let timerInterval, pollInterval;
     let currentTurn = 0;
-    const startCountdownTime = 5;
-    const turnDuration = 10;
+    let pollInterval;
+
+    // Décompte visuel local pour la fluidité entre deux actualisations serveur
+    setInterval(() => {
+        if(timer > 0) timer--;
+    }, 1000);
 
     function toggleMenu() {
         isMenuOpen = !isMenuOpen;
@@ -137,7 +107,6 @@
         amISeated = false;
         timer = 0;
         currentTurn = 0;
-        if(timerInterval) clearInterval(timerInterval);
         for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false};
         document.getElementById('myInfo').style.display = 'none';
         initButtons();
@@ -167,10 +136,15 @@
         try {
             const res = await fetch("/game");
             const data = await res.json();
-            let playersInServer = data.players || [];
-            let countBefore = playerData.filter(p => p.active).length;
 
+            // SYNCHRONISATION DES DONNÉES SERVEUR
+            gameStarted = data.gameStarted || false;
+            timer = data.timer || 0;
+            currentTurn = data.currentTurn || 0;
+
+            let playersInServer = data.players || [];
             amISeated = false;
+
             for(let i=0; i<nPlayers; i++) playerData[i].active = false;
 
             playersInServer.forEach((p, i) => {
@@ -186,39 +160,11 @@
             });
 
             buttons.forEach((btn, i) => {
-                if(amISeated || playerData[i].active) btn.hide();
+                if(amISeated || playerData[i].active || gameStarted) btn.hide();
                 else btn.show();
             });
 
-            // LOGIQUE DE DÉMARRAGE AUTOMATIQUE
-            let countAfter = playerData.filter(p => p.active).length;
-            if(!gameStarted && countAfter === 2 && countBefore < 2){
-                startCountdown(startCountdownTime, () => {
-                    gameStarted = true;
-                    startTurnTimer();
-                });
-            }
-        } catch(e) { console.error(e); }
-    }
-
-    function startCountdown(seconds, callback){
-        timer = seconds;
-        if(timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(()=>{
-            timer--;
-            if(timer <= 0){ clearInterval(timerInterval); callback(); }
-        }, 1000);
-    }
-
-    function startTurnTimer(){
-        currentTurn = 0;
-        startCountdown(turnDuration, nextTurn);
-    }
-
-    function nextTurn(){
-        if(!gameStarted) return;
-        currentTurn = (currentTurn + 1) % nPlayers;
-        startCountdown(turnDuration, nextTurn);
+        } catch(e) { console.error("Erreur Sync:", e); }
     }
 
     async function joinPlayer(index){
@@ -266,24 +212,23 @@
             if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
 
             if(playerData[i] && playerData[i].active){
-                // Glow du tour actuel
-                if(gameStarted && i === currentTurn){
+                let isHisTurn = (gameStarted && i === currentTurn);
+                if(isHisTurn){
                     push(); noFill(); stroke(255, 215, 0, 150 + sin(frameCount*0.1)*50);
                     strokeWeight(6); rect(x-5, y-5, avatarW+10, avatarH+10, 15); pop();
                 }
                 textAlign(CENTER);
                 let textY = Math.sin(angle)>0?y+avatarH+15:y-35;
                 fill(playerData[i].isMe ? "rgba(0, 100, 200, 0.9)" : "rgba(0,0,0,0.8)");
-                if(gameStarted && i === currentTurn) fill("#FFD700");
+                if(isHisTurn) fill("#FFD700");
                 rect(x-15,textY,avatarW+30,45,8);
-                fill(gameStarted && i === currentTurn ? 0 : 255); textSize(12); textStyle(BOLD);
+                fill(isHisTurn ? 0 : 255); textSize(12); textStyle(BOLD);
                 text(playerData[i].name, x+avatarW/2, textY+20);
-                fill(gameStarted && i === currentTurn ? 0 : "#FFD700");
+                fill(isHisTurn ? 0 : "#FFD700");
                 text(playerData[i].chips + " J", x+avatarW/2, textY+38);
             }
         }
 
-        // AFFICHAGE DES INFOS DE JEU (TIMER)
         textAlign(CENTER);
         if(!gameStarted){
             let activeCount = playerData.filter(p=>p.active).length;
@@ -291,7 +236,8 @@
             else { fill(255, 150); textSize(20); text("ATTENTE JOUEURS ("+activeCount+"/2)...", cx, 50); }
         } else {
             fill(255); textSize(22);
-            text("TOUR : " + playerData[currentTurn].name.toUpperCase() + " (" + timer + "s)", cx, 50);
+            let name = playerData[currentTurn] ? playerData[currentTurn].name.toUpperCase() : "JOUEUR";
+            text("TOUR : " + name + " (" + timer + "s)", cx, 50);
             text("POT: 0 J", cx, cy + 15);
         }
     }

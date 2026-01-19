@@ -6,37 +6,92 @@ use Illuminate\Http\Request;
 use App\Models\Game;
 use App\Models\Player;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class GameController extends Controller
 {
-    public function join(Request $request)
+    public function show()
     {
-        $request->validate(['name' => 'required|string|max:50']);
+        $game = Game::with('players')->first();
+        if (!$game) {
+            return response()->json(['players' => [], 'gameStarted' => false]);
+        }
 
-        // Récupère ou crée la partie unique
-        $game = Game::firstOrCreate([], ['status' => 'waiting']);
+        $myToken = session('player_token');
+        $players = $game->players->map(function($p) use ($myToken) {
+            return [
+                'name' => $p->name,
+                'chips' => $p->chips,
+                'is_me' => ($p->session_token === $myToken)
+            ];
+        });
 
-        // 1. Vérification : L'utilisateur est-il déjà assis (via session) ?
-        if (session()->has('player_token')) {
-            $alreadySeated = Player::where('session_token', session('player_token'))
-                ->where('game_id', $game->id)
-                ->exists();
-            if ($alreadySeated) {
-                return response()->json(['error' => 'You are already at the table!'], 403);
+        // --- LOGIQUE DE SYNCHRONISATION DU TIMER ---
+        $now = Carbon::now();
+        $timerValue = 0;
+
+        // Si on attend le 2ème joueur
+        if ($game->players->count() < 2) {
+            $game->update(['status' => 'waiting', 'timer_at' => null]);
+        }
+        // Si les 2 sont là et qu'on n'a pas encore lancé le décompte
+        elseif ($game->status === 'waiting' && $game->players->count() === 2) {
+            $game->update([
+                'status' => 'countdown',
+                'timer_at' => $now->addSeconds(5) // Décompte de 5s
+            ]);
+        }
+
+        // Calcul du temps restant à envoyer au JS
+        if ($game->timer_at) {
+            $timerValue = $now->diffInSeconds(Carbon::parse($game->timer_at), false);
+
+            // Si le temps est écoulé
+            if ($timerValue <= 0) {
+                if ($game->status === 'countdown') {
+                    // On passe en jeu réel
+                    $game->update([
+                        'status' => 'playing',
+                        'timer_at' => Carbon::now()->addSeconds(10), // 10s pour le 1er tour
+                        'current_turn' => 0
+                    ]);
+                    $timerValue = 10;
+                } elseif ($game->status === 'playing') {
+                    // On passe au joueur suivant
+                    $nextTurn = ($game->current_turn + 1) % 2;
+                    $game->update([
+                        'timer_at' => Carbon::now()->addSeconds(10),
+                        'current_turn' => $nextTurn
+                    ]);
+                    $timerValue = 10;
+                }
             }
         }
 
-        // 2. Vérification : La table est-elle pleine ?
+        return response()->json([
+            'players' => $players,
+            'gameStarted' => ($game->status === 'playing'),
+            'timer' => max(0, (int)$timerValue),
+            'currentTurn' => $game->current_turn ?? 0,
+            'status' => $game->status
+        ]);
+    }
+
+    public function join(Request $request)
+    {
+        $request->validate(['name' => 'required|string|max:50']);
+        $game = Game::firstOrCreate([], ['status' => 'waiting']);
+
+        if (session()->has('player_token')) {
+            $alreadySeated = Player::where('session_token', session('player_token'))
+                ->where('game_id', $game->id)->exists();
+            if ($alreadySeated) return response()->json(['error' => 'Déjà à table'], 403);
+        }
+
         if ($game->players()->count() >= 2) {
-            return response()->json(['error' => 'Game is full'], 403);
+            return response()->json(['error' => 'Table pleine'], 403);
         }
 
-        // 3. Vérification : Le nom est-il déjà pris ?
-        if ($game->players()->where('name', $request->name)->exists()) {
-            return response()->json(['error' => 'Name already taken'], 403);
-        }
-
-        // Création du joueur
         $token = Str::random(32);
         $player = $game->players()->create([
             'name' => $request->name,
@@ -44,40 +99,20 @@ class GameController extends Controller
             'session_token' => $token
         ]);
 
-        // Sauvegarde du token en session PHP
         session(['player_token' => $token]);
-
-        return response()->json([
-            'message' => 'Joined successfully',
-            'player' => $player
-        ]);
-    }
-
-    public function show()
-    {
-        // On récupère le jeu, les joueurs, et on ajoute un indicateur "me"
-        $game = Game::with('players')->first();
-        $myToken = session('player_token');
-
-        // On transforme la réponse pour que le JS sache si l'utilisateur actuel est à table
-        $players = $game ? $game->players->map(function($p) use ($myToken) {
-            return [
-                'name' => $p->name,
-                'chips' => $p->chips,
-                'is_me' => ($p->session_token === $myToken)
-            ];
-        }) : [];
-
-        return response()->json([
-            'players' => $players,
-            'status' => $game->status ?? 'waiting'
-        ]);
+        return response()->json(['message' => 'Ok', 'player' => $player]);
     }
 
     public function logout()
     {
         if (session()->has('player_token')) {
-            Player::where('session_token', session('player_token'))->delete();
+            $player = Player::where('session_token', session('player_token'))->first();
+            if ($player) {
+                $game = Game::find($player->game_id);
+                $player->delete();
+                // Si un joueur part, on reset le jeu en attente
+                if ($game) $game->update(['status' => 'waiting', 'timer_at' => null]);
+            }
             session()->forget('player_token');
         }
         return response()->json(['message' => 'Logged out']);
