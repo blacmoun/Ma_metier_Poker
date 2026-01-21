@@ -18,6 +18,7 @@ return new class extends Migration
             $table->foreignId('game_id')->nullable()->constrained()->onDelete('cascade');
             $table->string('session_token', 64)->nullable()->unique();
             $table->json('hand')->nullable();
+            $table->integer('current_bet')->default(0);
             $table->timestamp('last_activity')->nullable();
             $table->timestamps();
         });

@@ -11,6 +11,7 @@ class Game extends Model
         'timer_at',
         'current_turn',
         'deck',
+        'pot',
         'community_cards'
     ];
 
