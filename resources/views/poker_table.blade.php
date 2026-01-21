@@ -112,7 +112,7 @@
     function resetGameState() {
         gameStarted = false; currentStatus = "waiting"; amISeated = false;
         myHand = []; communityCards = [];
-        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false};
+        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false, isDealer: false, role: ""};
         document.getElementById('myInfo').style.display = 'none';
         document.getElementById('cards').innerText = "En attente...";
         document.getElementById('board').innerText = "Aucune carte sur le tapis.";
@@ -170,7 +170,15 @@
 
             playersInServer.forEach((p, i) => {
                 if(i < nPlayers){
-                    playerData[i] = { name: p.name, chips: p.chips, active: true, isMe: p.is_me, hasCards: p.has_cards };
+                    playerData[i] = {
+                        name: p.name,
+                        chips: p.chips,
+                        active: true,
+                        isMe: p.is_me,
+                        hasCards: p.has_cards,
+                        isDealer: p.is_dealer || false,
+                        role: p.role || ""
+                    };
                     if(p.is_me) {
                         amISeated = true;
                         myHand = p.hand || [];
@@ -179,7 +187,6 @@
                 }
             });
 
-            // Mise à jour de l'onglet "Tapis"
             const boardTab = document.getElementById('board');
             if (communityCards.length > 0) {
                 boardTab.innerHTML = communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('');
@@ -247,7 +254,7 @@
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4);
         ellipse(cx,cy,tableW,tableH); pop();
 
-        // --- CARTES COMMUNES (CANVAS) ---
+        // --- CARTES COMMUNES ---
         let cw = 50, ch = 70;
         if (communityCards.length > 0) {
             let gap = 10;
@@ -258,9 +265,7 @@
             }
         }
 
-        // --- POT ---
-        textAlign(CENTER);
-        fill("#FFD700"); textSize(18); textStyle(BOLD);
+        textAlign(CENTER); fill("#FFD700"); textSize(18); textStyle(BOLD);
         text("POT: 0 J", cx, cy + ch/2 + 25);
 
         let rx = tableW*0.52, ry = tableH*0.55;
@@ -272,6 +277,15 @@
             if(playerData[i] && playerData[i].active){
                 if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
 
+                // --- JETON DEALER "D" ---
+                if(playerData[i].isDealer) {
+                    fill(255); stroke(0); strokeWeight(1);
+                    ellipse(x + avatarW + 5, y + 20, 26, 26);
+                    fill(0); noStroke(); textAlign(CENTER); textSize(16); textStyle(BOLD);
+                    text("D", x + avatarW + 5, y + 26);
+                }
+
+                // --- HALO TOUR ACTUEL ---
                 let isHisTurn = (gameStarted && i === currentTurn && currentStatus !== 'finished');
                 if(isHisTurn){
                     push(); noFill(); stroke(255, 215, 0, 150 + sin(frameCount*0.1)*50);
@@ -283,7 +297,6 @@
                     let cardW = 40, cardH = 55;
                     let cardX = x + avatarW/2 - cardW;
                     let cardY = (y < cy) ? y + avatarH + 10 : y - cardH - 10;
-
                     if (playerData[i].isMe && myHand.length === 2) {
                         image(getCardImg(myHand[0]), cardX, cardY, cardW, cardH);
                         image(getCardImg(myHand[1]), cardX + cardW + 5, cardY, cardW, cardH);
@@ -293,27 +306,25 @@
                     }
                 }
 
-                // --- ÉTIQUETTES NOMS ---
-                let textY = (y < cy) ? y - 55 : y + avatarH + 5;
+                // --- ÉTIQUETTES NOMS + RÔLES ---
+                let textY = (y < cy) ? y - 60 : y + avatarH + 5;
                 push();
                 fill(playerData[i].isMe ? "rgba(0, 80, 180, 0.9)" : "rgba(0,0,0,0.8)");
                 if(isHisTurn) fill("#FFD700");
-                rect(x-15, textY, avatarW+30, 45, 8);
+                rect(x-15, textY, avatarW+30, 50, 8);
 
-                fill(isHisTurn ? 0 : 255); textSize(12); textStyle(BOLD);
+                fill(isHisTurn ? 0 : 255); textAlign(CENTER); textSize(12); textStyle(BOLD);
                 let displayName = playerData[i].name;
-                if(displayName.length > 12) displayName = displayName.substring(0,10)+"...";
+                if(playerData[i].role) displayName += " (" + playerData[i].role + ")";
                 text(displayName, x+avatarW/2, textY+20);
 
                 fill(isHisTurn ? 0 : "#FFD700");
-                text(playerData[i].chips + " J", x+avatarW/2, textY+38);
+                text(playerData[i].chips + " J", x+avatarW/2, textY+40);
                 pop();
             }
         }
 
-        // HUD Status
-        textAlign(CENTER);
-        fill(255); textSize(22);
+        textAlign(CENTER); fill(255); textSize(22);
         let statusTxt = currentStatus.toUpperCase();
         if(currentStatus === 'finished') statusTxt = "PARTIE TERMINÉE";
         text(statusTxt + (timer > 0 ? " (" + timer + "s)" : ""), cx, 40);

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('status')->default('waiting');
             $table->timestamp('timer_at')->nullable();
             $table->integer('current_turn')->default(0);
+            $table->integer('dealer_index')->default(0);
             $table->json('deck')->nullable();
             $table->json('community_cards')->nullable();
 
