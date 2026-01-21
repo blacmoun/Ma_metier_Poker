@@ -72,14 +72,12 @@
     const nPlayers = 2;
     const avatarW = 100, avatarH = 125, tableW = 800, tableH = 350;
 
-    // VARIABLES SYNCHRONISÉES
     let gameStarted = false;
     let amISeated = false;
     let timer = 0;
     let currentTurn = 0;
     let pollInterval;
 
-    // Décompte visuel local pour la fluidité entre deux actualisations serveur
     setInterval(() => {
         if(timer > 0) timer--;
     }, 1000);
@@ -137,7 +135,6 @@
             const res = await fetch("/game");
             const data = await res.json();
 
-            // SYNCHRONISATION DES DONNÉES SERVEUR
             gameStarted = data.gameStarted || false;
             timer = data.timer || 0;
             currentTurn = data.currentTurn || 0;
@@ -159,6 +156,12 @@
                 }
             });
 
+            // GESTION DU BOUTON QUITTER : affiché seulement si on est assis
+            if(logoutBtn) {
+                if(amISeated) logoutBtn.show();
+                else logoutBtn.hide();
+            }
+
             buttons.forEach((btn, i) => {
                 if(amISeated || playerData[i].active || gameStarted) btn.hide();
                 else btn.show();
@@ -170,15 +173,34 @@
     async function joinPlayer(index){
         if(amISeated) return;
         let name = prompt("Entrez votre nom :");
+
         if(!name || name.trim()==="") return;
+
+        if(name.length >= 50) {
+            alert("Erreur : Le nom doit faire moins de 50 caractères.");
+            return;
+        }
+
         try {
-            await fetch("/join",{
+            const response = await fetch("/join",{
                 method:"POST",
-                headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},
+                headers:{
+                    "Content-Type":"application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
                 body: JSON.stringify({name})
             });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                alert(errorData.error || "Une erreur est survenue");
+                return;
+            }
+
             await loadPlayers();
-        } catch(e) { console.error(e); }
+        } catch(e) {
+            console.error(e);
+        }
     }
 
     function createLogoutButton(){
@@ -186,6 +208,7 @@
         logoutBtn = createButton("Quitter");
         logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20);
         logoutBtn.size(100,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white');
+        logoutBtn.hide(); // Caché par défaut au démarrage
         logoutBtn.mousePressed(async ()=>{
             await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
             location.reload();
@@ -197,13 +220,11 @@
         let currentH = document.getElementById('p5-zone').offsetHeight;
         let cx = width/2, cy = currentH / 2;
 
-        // TABLE
         push(); stroke("#3e2003"); strokeWeight(8); fill("#b45f06");
         ellipse(cx,cy,tableW+40,tableH+40);
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4);
         ellipse(cx,cy,tableW,tableH); pop();
 
-        // JOUEURS
         let rx = tableW*0.52, ry = tableH*0.55;
         for(let i=0; i<nPlayers; i++){
             let angle = -Math.PI/2 + i*Math.PI;
