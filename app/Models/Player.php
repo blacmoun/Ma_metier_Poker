@@ -6,7 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Player extends Model
 {
-    protected $fillable = ['name', 'chips', 'game_id', 'session_token'];
+    protected $fillable = ['name', 'chips', 'game_id', 'session_token', 'hand'];
+
+    protected $casts = [
+        'hand' => 'array',
+    ];
 
     public function game()
     {

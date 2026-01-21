@@ -17,6 +17,7 @@
         #myInfo { position: absolute; top: 20px; right: 20px; background: rgba(0, 0, 0, 0.8); border: 2px solid #FFD700; border-radius: 8px; padding: 10px; color: white; min-width: 150px; display: none; z-index: 100; }
         .nav-tabs .nav-link { color: #aaa; border: none; }
         .nav-tabs .nav-link.active { background: #FFD700 !important; color: black !important; font-weight: bold; }
+        .card-img-ui { height: 100px; margin: 5px; border-radius: 5px; border: 1px solid #FFD700; background: #222; }
     </style>
 </head>
 <body>
@@ -64,23 +65,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    let isMenuOpen = false;
-    let imgPlayer;
-    let buttons = [];
-    let logoutBtn;
-    let playerData = [];
-    const nPlayers = 2;
-    const avatarW = 100, avatarH = 125, tableW = 800, tableH = 350;
+    let isMenuOpen = false, imgPlayer, buttons = [], logoutBtn, playerData = [];
+    const nPlayers = 2, avatarW = 100, avatarH = 125, tableW = 800, tableH = 350;
+    let gameStarted = false, currentStatus = "waiting", amISeated = false, timer = 0, currentTurn = 0;
+    let cardImages = {}, myHand = [];
 
-    let gameStarted = false;
-    let amISeated = false;
-    let timer = 0;
-    let currentTurn = 0;
-    let pollInterval;
-
-    setInterval(() => {
-        if(timer > 0) timer--;
-    }, 1000);
+    setInterval(() => { if(timer > 0) timer--; }, 1000);
 
     function toggleMenu() {
         isMenuOpen = !isMenuOpen;
@@ -89,45 +79,63 @@
         setTimeout(() => { initButtons(); }, 410);
     }
 
-    function preload(){ imgPlayer = loadImage("/img/joueur.png"); }
+    function preload(){
+        imgPlayer = loadImage("/img/joueur.png");
+        // Correction du chemin pour correspondre à ton arborescence public/img/img/cartes
+        cardImages['Dos.png'] = loadImage("/img/cards/Dos.png");
+    }
 
     function setup(){
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
         resetGameState();
         createLogoutButton();
-        loadPlayers();
-        pollInterval = setInterval(loadPlayers, 2000);
+
+        // On charge les joueurs immédiatement AVANT d'initialiser les boutons
+        loadPlayers().then(() => {
+            initButtons();
+            setInterval(loadPlayers, 2000);
+        });
     }
 
     function resetGameState() {
-        gameStarted = false;
-        amISeated = false;
-        timer = 0;
-        currentTurn = 0;
-        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false};
+        gameStarted = false; currentStatus = "waiting"; amISeated = false;
+        myHand = [];
+        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false};
         document.getElementById('myInfo').style.display = 'none';
-        initButtons();
+        document.getElementById('cards').innerText = "En attente de la distribution...";
     }
 
     function initButtons(){
         buttons.forEach(b => b.remove());
         buttons = [];
+
+        // Si je suis déjà assis, on n'affiche aucun bouton Rejoindre
+        if(amISeated) return;
+
         let currentH = document.getElementById('p5-zone').offsetHeight;
         let cx = width/2, cy = currentH / 2;
         let rx = tableW*0.52, ry = tableH*0.55;
 
         for(let i=0; i<nPlayers; i++){
+            // On n'affiche le bouton que si la place est vide sur le serveur
+            if(playerData[i] && playerData[i].active) continue;
+
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle) - avatarW/2;
             let y = cy + ry*Math.sin(angle) - avatarH/2;
+
             let btn = createButton("Rejoindre");
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x+avatarW/2-50, y+avatarH+10);
             btn.mousePressed(() => joinPlayer(i));
-            if(amISeated || (playerData[i] && playerData[i].active)) btn.hide();
             buttons.push(btn);
         }
+    }
+
+    function getCardImg(cardName) {
+        if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName);
+        return cardImages[cardName];
     }
 
     async function loadPlayers(){
@@ -135,80 +143,69 @@
             const res = await fetch("/game");
             const data = await res.json();
 
+            if (data.status === 'waiting' && currentStatus !== 'waiting') resetGameState();
+
+            currentStatus = data.status;
             gameStarted = data.gameStarted || false;
             timer = data.timer || 0;
-            currentTurn = data.currentTurn || 0;
+            currentTurn = data.currentTurn;
 
             let playersInServer = data.players || [];
+            let oldSeatedStatus = amISeated;
             amISeated = false;
 
             for(let i=0; i<nPlayers; i++) playerData[i].active = false;
 
             playersInServer.forEach((p, i) => {
                 if(i < nPlayers){
-                    playerData[i] = { name: p.name, chips: p.chips, active: true, isMe: p.is_me };
+                    playerData[i] = { name: p.name, chips: p.chips, active: true, isMe: p.is_me, hasCards: p.has_cards };
                     if(p.is_me) {
                         amISeated = true;
-                        document.getElementById('myInfo').style.display = 'block';
-                        document.getElementById('myName').innerText = p.name;
-                        document.getElementById('myChips').innerText = p.chips + " J";
+                        myHand = p.hand || [];
+                        updateUI(p);
                     }
                 }
             });
 
-            // GESTION DU BOUTON QUITTER : affiché seulement si on est assis
-            if(logoutBtn) {
-                if(amISeated) logoutBtn.show();
-                else logoutBtn.hide();
-            }
+            // Si le statut a changé après le fetch (ex: quelqu'un d'autre s'est assis), on met à jour les boutons
+            if(oldSeatedStatus !== amISeated) initButtons();
 
-            buttons.forEach((btn, i) => {
-                if(amISeated || playerData[i].active || gameStarted) btn.hide();
-                else btn.show();
-            });
+            if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
+        } catch(e) { console.error("Sync Error:", e); }
+    }
 
-        } catch(e) { console.error("Erreur Sync:", e); }
+    function updateUI(p) {
+        document.getElementById('myInfo').style.display = 'block';
+        document.getElementById('myName').innerText = p.name || "-";
+        document.getElementById('myChips').innerText = (p.chips || 0) + " J";
+
+        const cardsTab = document.getElementById('cards');
+        if (Array.isArray(myHand) && myHand.length > 0) {
+            cardsTab.innerHTML = myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('');
+        } else if (currentStatus === "dealing") {
+            cardsTab.innerText = "Distribution ...";
+        } else {
+            cardsTab.innerText = "En attente...";
+        }
     }
 
     async function joinPlayer(index){
-        if(amISeated) return;
         let name = prompt("Entrez votre nom :");
-
-        if(!name || name.trim()==="") return;
-
-        if(name.length >= 50) {
-            alert("Erreur : Le nom doit faire moins de 50 caractères.");
-            return;
-        }
-
-        try {
-            const response = await fetch("/join",{
-                method:"POST",
-                headers:{
-                    "Content-Type":"application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({name})
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                alert(errorData.error || "Une erreur est survenue");
-                return;
-            }
-
-            await loadPlayers();
-        } catch(e) {
-            console.error(e);
-        }
+        if(!name) return;
+        await fetch("/join",{
+            method:"POST",
+            headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},
+            body: JSON.stringify({name})
+        });
+        await loadPlayers();
+        initButtons();
     }
 
     function createLogoutButton(){
-        if(logoutBtn) logoutBtn.remove();
         logoutBtn = createButton("Quitter");
         logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20);
         logoutBtn.size(100,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white');
-        logoutBtn.hide(); // Caché par défaut au démarrage
+        logoutBtn.hide();
         logoutBtn.mousePressed(async ()=>{
             await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
             location.reload();
@@ -220,6 +217,7 @@
         let currentH = document.getElementById('p5-zone').offsetHeight;
         let cx = width/2, cy = currentH / 2;
 
+        // TABLE
         push(); stroke("#3e2003"); strokeWeight(8); fill("#b45f06");
         ellipse(cx,cy,tableW+40,tableH+40);
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4);
@@ -230,36 +228,58 @@
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle) - avatarW/2;
             let y = cy + ry*Math.sin(angle) - avatarH/2;
-            if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
 
             if(playerData[i] && playerData[i].active){
+                if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
+
                 let isHisTurn = (gameStarted && i === currentTurn);
                 if(isHisTurn){
                     push(); noFill(); stroke(255, 215, 0, 150 + sin(frameCount*0.1)*50);
                     strokeWeight(6); rect(x-5, y-5, avatarW+10, avatarH+10, 15); pop();
                 }
+
+                if ((gameStarted || currentStatus === "dealing") && playerData[i].hasCards) {
+                    let cardW = 45, cardH = 65;
+                    let cardX = x + avatarW/2 - cardW;
+                    let cardY = (y < cy) ? y + avatarH + 5 : y - cardH - 5;
+                    if (playerData[i].isMe && myHand.length === 2) {
+                        image(getCardImg(myHand[0]), cardX, cardY, cardW, cardH);
+                        image(getCardImg(myHand[1]), cardX + cardW + 5, cardY, cardW, cardH);
+                    } else {
+                        image(cardImages['Dos.png'], cardX, cardY, cardW, cardH);
+                        image(cardImages['Dos.png'], cardX + cardW + 5, cardY, cardW, cardH);
+                    }
+                }
+
                 textAlign(CENTER);
-                let textY = Math.sin(angle)>0?y+avatarH+15:y-35;
-                fill(playerData[i].isMe ? "rgba(0, 100, 200, 0.9)" : "rgba(0,0,0,0.8)");
+                let textY = Math.sin(angle)>0 ? y+avatarH+25 : y-65;
+                push();
+                fill(playerData[i].isMe ? "rgba(0, 80, 180, 0.9)" : "rgba(0,0,0,0.8)");
                 if(isHisTurn) fill("#FFD700");
-                rect(x-15,textY,avatarW+30,45,8);
+                rect(x-15, textY, avatarW+30, 45, 8);
                 fill(isHisTurn ? 0 : 255); textSize(12); textStyle(BOLD);
-                text(playerData[i].name, x+avatarW/2, textY+20);
+                let displayName = playerData[i].name;
+                if(displayName.length > 12) displayName = displayName.substring(0,10)+"...";
+                text(displayName, x+avatarW/2, textY+20);
                 fill(isHisTurn ? 0 : "#FFD700");
                 text(playerData[i].chips + " J", x+avatarW/2, textY+38);
+                pop();
             }
         }
 
         textAlign(CENTER);
-        if(!gameStarted){
+        if(currentStatus === "waiting"){
             let activeCount = playerData.filter(p=>p.active).length;
-            if(activeCount === 2) { fill("#FFD700"); textSize(24); text("DÉBUT DANS : "+timer+"s", cx, 50); }
-            else { fill(255, 150); textSize(20); text("ATTENTE JOUEURS ("+activeCount+"/2)...", cx, 50); }
+            fill(255, 150); textSize(20); text("ATTENTE JOUEURS ("+activeCount+"/2)...", cx, 50);
+        } else if(currentStatus === "countdown"){
+            fill("#FFD700"); textSize(24); text("DÉBUT DANS : "+timer+"s", cx, 50);
+        } else if(currentStatus === "dealing"){
+            fill("#FFD700"); textSize(24); text("DISTRIBUTION... ("+timer+"s)", cx, 50);
         } else {
             fill(255); textSize(22);
-            let name = playerData[currentTurn] ? playerData[currentTurn].name.toUpperCase() : "JOUEUR";
+            let name = (playerData[currentTurn] && playerData[currentTurn].active) ? playerData[currentTurn].name.toUpperCase() : "JOUEUR";
             text("TOUR : " + name + " (" + timer + "s)", cx, 50);
-            text("POT: 0 J", cx, cy + 15);
+            fill("#FFD700"); text("POT: 0 J", cx, cy + 15);
         }
     }
 

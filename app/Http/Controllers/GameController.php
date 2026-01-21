@@ -2,78 +2,73 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Game;
 use App\Models\Player;
+use App\Services\PokerService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class GameController extends Controller
 {
-    public function show()
+    public function show(PokerService $pokerService)
     {
         $game = Game::with('players')->first();
-        if (!$game) {
-            return response()->json(['players' => [], 'gameStarted' => false]);
-        }
+        if (!$game) $game = Game::create(['status' => 'waiting']);
 
-        $myToken = session('player_token');
-        $players = $game->players->map(function($p) use ($myToken) {
-            return [
-                'name' => $p->name,
-                'chips' => $p->chips,
-                'is_me' => ($p->session_token === $myToken)
-            ];
-        });
-
-        // --- LOGIQUE DE SYNCHRONISATION DU TIMER ---
         $now = Carbon::now();
         $timerValue = 0;
+        $playerCount = $game->players->count();
 
-        // Si on attend le 2ème joueur
-        if ($game->players->count() < 2) {
-            $game->update(['status' => 'waiting', 'timer_at' => null]);
-        }
-        // Si les 2 sont là et qu'on n'a pas encore lancé le décompte
-        elseif ($game->status === 'waiting' && $game->players->count() === 2) {
-            $game->update([
-                'status' => 'countdown',
-                'timer_at' => $now->addSeconds(5) // Décompte de 5s
-            ]);
+        // 1. FORCE RESET SI JOUEUR MANQUANT
+        if ($playerCount < 2 && $game->status !== 'waiting') {
+            $game->update(['status' => 'waiting', 'timer_at' => null, 'current_turn' => 0]);
+            Player::where('game_id', $game->id)->update(['hand' => null]);
         }
 
-        // Calcul du temps restant à envoyer au JS
+        // 2. LOGIQUE DES ÉTATS
+        if ($playerCount === 2 && $game->status === 'waiting') {
+            $game->update(['status' => 'countdown', 'timer_at' => $now->addSeconds(10)]);
+        }
+
         if ($game->timer_at) {
             $timerValue = $now->diffInSeconds(Carbon::parse($game->timer_at), false);
 
-            // Si le temps est écoulé
-            if ($timerValue <= 0) {
-                if ($game->status === 'countdown') {
-                    // On passe en jeu réel
-                    $game->update([
-                        'status' => 'playing',
-                        'timer_at' => Carbon::now()->addSeconds(10), // 10s pour le 1er tour
-                        'current_turn' => 0
-                    ]);
-                    $timerValue = 10;
-                } elseif ($game->status === 'playing') {
-                    // On passe au joueur suivant
-                    $nextTurn = ($game->current_turn + 1) % 2;
-                    $game->update([
-                        'timer_at' => Carbon::now()->addSeconds(10),
-                        'current_turn' => $nextTurn
-                    ]);
-                    $timerValue = 10;
+            // Countdown (10s) -> Dealing (10s)
+            if ($timerValue <= 0 && $game->status === 'countdown') {
+                $game->update(['status' => 'dealing', 'timer_at' => Carbon::now()->addSeconds(10)]);
+                $timerValue = 10;
+            }
+
+            // Dealing (20s) -> Playing (Distribution réelle des cartes ici)
+            if ($timerValue <= 0 && $game->status === 'dealing') {
+                $deck = $pokerService->createDeck();
+                foreach ($game->players as $player) {
+                    $player->update(['hand' => $pokerService->deal($deck, 2)]);
                 }
+                $game->update(['status' => 'playing', 'timer_at' => Carbon::now()->addSeconds(15), 'current_turn' => 0]);
+                $timerValue = 15;
+            }
+
+            // Playing -> Changement de tour automatique
+            if ($timerValue <= 0 && $game->status === 'playing') {
+                $game->update(['current_turn' => ($game->current_turn + 1) % 2, 'timer_at' => Carbon::now()->addSeconds(15)]);
+                $timerValue = 15;
             }
         }
 
         return response()->json([
-            'players' => $players,
+            'players' => $game->players->map(fn($p) => [
+                'name' => $p->name,
+                'chips' => $p->chips,
+                'is_me' => ($p->session_token === session('player_token')),
+                'hand' => ($p->session_token === session('player_token')) ? $p->hand : null,
+                'has_cards' => !empty($p->hand)
+            ]),
             'gameStarted' => ($game->status === 'playing'),
+            'status' => $game->status, // TRÈS IMPORTANT
             'timer' => max(0, (int)$timerValue),
-            'currentTurn' => $game->current_turn ?? 0,
-            'status' => $game->status
+            'currentTurn' => (int)$game->current_turn
         ]);
     }
 
@@ -83,16 +78,15 @@ class GameController extends Controller
         $game = Game::firstOrCreate([], ['status' => 'waiting']);
 
         if (session()->has('player_token')) {
-            $alreadySeated = Player::where('session_token', session('player_token'))
-                ->where('game_id', $game->id)->exists();
-            if ($alreadySeated) return response()->json(['error' => 'Déjà à table'], 403);
+            $exists = Player::where('session_token', session('player_token'))->exists();
+            if ($exists) return response()->json(['error' => 'Déjà à table'], 403);
         }
 
         if ($game->players()->count() >= 2) {
             return response()->json(['error' => 'Table pleine'], 403);
         }
 
-        $token = Str::random(32);
+        $token = Str::random(32); // Fonctionne maintenant grâce à l'import
         $player = $game->players()->create([
             'name' => $request->name,
             'chips' => 1000,
@@ -100,7 +94,7 @@ class GameController extends Controller
         ]);
 
         session(['player_token' => $token]);
-        return response()->json(['message' => 'Ok', 'player' => $player]);
+        return response()->json(['message' => 'Ok']);
     }
 
     public function logout()
@@ -108,10 +102,15 @@ class GameController extends Controller
         if (session()->has('player_token')) {
             $player = Player::where('session_token', session('player_token'))->first();
             if ($player) {
-                $game = Game::find($player->game_id);
+                $game = Game::find($player->game_id); // Recherche directe par ID
                 $player->delete();
-                // Si un joueur part, on reset le jeu en attente
-                if ($game) $game->update(['status' => 'waiting', 'timer_at' => null]);
+
+                if ($game) {
+                    // On remet la partie en attente s'il reste 1 ou 0 joueur
+                    $game->update(['status' => 'waiting', 'timer_at' => null]);
+                    // On vide les mains des joueurs restants pour le prochain tour
+                    Player::where('game_id', $game->id)->update(['hand' => null]);
+                }
             }
             session()->forget('player_token');
         }
