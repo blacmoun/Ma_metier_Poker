@@ -21,3 +21,4 @@ Route::post('/logout', function(){
     }
     return response()->json(['message'=>'Logged out']);
 });
+Route::post('/restart', [GameController::class, 'restart']);

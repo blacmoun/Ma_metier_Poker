@@ -18,9 +18,20 @@
         .nav-tabs .nav-link { color: #aaa; border: none; }
         .nav-tabs .nav-link.active { background: #FFD700 !important; color: black !important; font-weight: bold; }
         .card-img-ui { height: 100px; margin: 5px; border-radius: 5px; border: 1px solid #FFD700; background: #222; }
+
+        #restart-overlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 1000; display: none; text-align: center;
+            background: rgba(0,0,0,0.9); padding: 30px; border: 3px solid #FFD700; border-radius: 15px;
+        }
     </style>
 </head>
 <body>
+
+<div id="restart-overlay">
+    <h2 style="color: #FFD700;">PARTIE TERMINÉE</h2>
+    <button class="btn btn-warning btn-lg fw-bold mt-3" onclick="restartGame()">NOUVELLE PARTIE</button>
+</div>
 
 <div id="myInfo">
     <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Joueur</div>
@@ -39,12 +50,14 @@
         <div class="row">
             <div class="col-md-6">
                 <ul class="nav nav-tabs mb-2">
-                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Cartes</button></li>
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
-                    <div class="tab-pane fade show active" id="cards">En attente de la distribution...</div>
-                    <div class="tab-pane fade" id="stats">Statistiques...</div>
+                    <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
+                    <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
+                    <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
                 </div>
             </div>
             <div class="col-md-6">
@@ -66,9 +79,9 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let isMenuOpen = false, imgPlayer, buttons = [], logoutBtn, playerData = [];
-    const nPlayers = 2, avatarW = 100, avatarH = 125, tableW = 800, tableH = 350;
+    const nPlayers = 2, avatarW = 80, avatarH = 100, tableW = 800, tableH = 350;
     let gameStarted = false, currentStatus = "waiting", amISeated = false, timer = 0, currentTurn = 0;
-    let cardImages = {}, myHand = [];
+    let cardImages = {}, myHand = [], communityCards = [];
 
     setInterval(() => { if(timer > 0) timer--; }, 1000);
 
@@ -81,7 +94,6 @@
 
     function preload(){
         imgPlayer = loadImage("/img/joueur.png");
-        // Correction du chemin pour correspondre à ton arborescence public/img/img/cartes
         cardImages['Dos.png'] = loadImage("/img/cards/Dos.png");
     }
 
@@ -91,7 +103,6 @@
         resetGameState();
         createLogoutButton();
 
-        // On charge les joueurs immédiatement AVANT d'initialiser les boutons
         loadPlayers().then(() => {
             initButtons();
             setInterval(loadPlayers, 2000);
@@ -100,17 +111,17 @@
 
     function resetGameState() {
         gameStarted = false; currentStatus = "waiting"; amISeated = false;
-        myHand = [];
+        myHand = []; communityCards = [];
         for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false};
         document.getElementById('myInfo').style.display = 'none';
-        document.getElementById('cards').innerText = "En attente de la distribution...";
+        document.getElementById('cards').innerText = "En attente...";
+        document.getElementById('board').innerText = "Aucune carte sur le tapis.";
+        document.getElementById('restart-overlay').style.display = 'none';
     }
 
     function initButtons(){
         buttons.forEach(b => b.remove());
         buttons = [];
-
-        // Si je suis déjà assis, on n'affiche aucun bouton Rejoindre
         if(amISeated) return;
 
         let currentH = document.getElementById('p5-zone').offsetHeight;
@@ -118,9 +129,7 @@
         let rx = tableW*0.52, ry = tableH*0.55;
 
         for(let i=0; i<nPlayers; i++){
-            // On n'affiche le bouton que si la place est vide sur le serveur
             if(playerData[i] && playerData[i].active) continue;
-
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle) - avatarW/2;
             let y = cy + ry*Math.sin(angle) - avatarH/2;
@@ -146,9 +155,12 @@
             if (data.status === 'waiting' && currentStatus !== 'waiting') resetGameState();
 
             currentStatus = data.status;
-            gameStarted = data.gameStarted || false;
+            gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'finished'].includes(data.status));
             timer = data.timer || 0;
             currentTurn = data.currentTurn;
+            communityCards = data.community_cards || [];
+
+            document.getElementById('restart-overlay').style.display = (currentStatus === 'finished') ? 'block' : 'none';
 
             let playersInServer = data.players || [];
             let oldSeatedStatus = amISeated;
@@ -167,9 +179,15 @@
                 }
             });
 
-            // Si le statut a changé après le fetch (ex: quelqu'un d'autre s'est assis), on met à jour les boutons
-            if(oldSeatedStatus !== amISeated) initButtons();
+            // Mise à jour de l'onglet "Tapis"
+            const boardTab = document.getElementById('board');
+            if (communityCards.length > 0) {
+                boardTab.innerHTML = communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('');
+            } else {
+                boardTab.innerText = "Le tapis est vide.";
+            }
 
+            if(oldSeatedStatus !== amISeated) initButtons();
             if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
         } catch(e) { console.error("Sync Error:", e); }
     }
@@ -182,10 +200,8 @@
         const cardsTab = document.getElementById('cards');
         if (Array.isArray(myHand) && myHand.length > 0) {
             cardsTab.innerHTML = myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('');
-        } else if (currentStatus === "dealing") {
-            cardsTab.innerText = "Distribution ...";
         } else {
-            cardsTab.innerText = "En attente...";
+            cardsTab.innerText = "En attente de la distribution...";
         }
     }
 
@@ -199,6 +215,14 @@
         });
         await loadPlayers();
         initButtons();
+    }
+
+    async function restartGame() {
+        await fetch("/restart", {
+            method: "POST",
+            headers: { "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content }
+        });
+        location.reload();
     }
 
     function createLogoutButton(){
@@ -223,6 +247,22 @@
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4);
         ellipse(cx,cy,tableW,tableH); pop();
 
+        // --- CARTES COMMUNES (CANVAS) ---
+        let cw = 50, ch = 70;
+        if (communityCards.length > 0) {
+            let gap = 10;
+            let totalW = communityCards.length * (cw + gap) - gap;
+            let startX = cx - totalW / 2;
+            for (let j = 0; j < communityCards.length; j++) {
+                image(getCardImg(communityCards[j]), startX + j * (cw + gap), cy - ch/2, cw, ch);
+            }
+        }
+
+        // --- POT ---
+        textAlign(CENTER);
+        fill("#FFD700"); textSize(18); textStyle(BOLD);
+        text("POT: 0 J", cx, cy + ch/2 + 25);
+
         let rx = tableW*0.52, ry = tableH*0.55;
         for(let i=0; i<nPlayers; i++){
             let angle = -Math.PI/2 + i*Math.PI;
@@ -232,16 +272,18 @@
             if(playerData[i] && playerData[i].active){
                 if(imgPlayer) image(imgPlayer, x, y, avatarW, avatarH);
 
-                let isHisTurn = (gameStarted && i === currentTurn);
+                let isHisTurn = (gameStarted && i === currentTurn && currentStatus !== 'finished');
                 if(isHisTurn){
                     push(); noFill(); stroke(255, 215, 0, 150 + sin(frameCount*0.1)*50);
                     strokeWeight(6); rect(x-5, y-5, avatarW+10, avatarH+10, 15); pop();
                 }
 
+                // --- CARTES DES JOUEURS ---
                 if ((gameStarted || currentStatus === "dealing") && playerData[i].hasCards) {
-                    let cardW = 45, cardH = 65;
+                    let cardW = 40, cardH = 55;
                     let cardX = x + avatarW/2 - cardW;
-                    let cardY = (y < cy) ? y + avatarH + 5 : y - cardH - 5;
+                    let cardY = (y < cy) ? y + avatarH + 10 : y - cardH - 10;
+
                     if (playerData[i].isMe && myHand.length === 2) {
                         image(getCardImg(myHand[0]), cardX, cardY, cardW, cardH);
                         image(getCardImg(myHand[1]), cardX + cardW + 5, cardY, cardW, cardH);
@@ -251,36 +293,30 @@
                     }
                 }
 
-                textAlign(CENTER);
-                let textY = Math.sin(angle)>0 ? y+avatarH+25 : y-65;
+                // --- ÉTIQUETTES NOMS ---
+                let textY = (y < cy) ? y - 55 : y + avatarH + 5;
                 push();
                 fill(playerData[i].isMe ? "rgba(0, 80, 180, 0.9)" : "rgba(0,0,0,0.8)");
                 if(isHisTurn) fill("#FFD700");
                 rect(x-15, textY, avatarW+30, 45, 8);
+
                 fill(isHisTurn ? 0 : 255); textSize(12); textStyle(BOLD);
                 let displayName = playerData[i].name;
                 if(displayName.length > 12) displayName = displayName.substring(0,10)+"...";
                 text(displayName, x+avatarW/2, textY+20);
+
                 fill(isHisTurn ? 0 : "#FFD700");
                 text(playerData[i].chips + " J", x+avatarW/2, textY+38);
                 pop();
             }
         }
 
+        // HUD Status
         textAlign(CENTER);
-        if(currentStatus === "waiting"){
-            let activeCount = playerData.filter(p=>p.active).length;
-            fill(255, 150); textSize(20); text("ATTENTE JOUEURS ("+activeCount+"/2)...", cx, 50);
-        } else if(currentStatus === "countdown"){
-            fill("#FFD700"); textSize(24); text("DÉBUT DANS : "+timer+"s", cx, 50);
-        } else if(currentStatus === "dealing"){
-            fill("#FFD700"); textSize(24); text("DISTRIBUTION... ("+timer+"s)", cx, 50);
-        } else {
-            fill(255); textSize(22);
-            let name = (playerData[currentTurn] && playerData[currentTurn].active) ? playerData[currentTurn].name.toUpperCase() : "JOUEUR";
-            text("TOUR : " + name + " (" + timer + "s)", cx, 50);
-            fill("#FFD700"); text("POT: 0 J", cx, cy + 15);
-        }
+        fill(255); textSize(22);
+        let statusTxt = currentStatus.toUpperCase();
+        if(currentStatus === 'finished') statusTxt = "PARTIE TERMINÉE";
+        text(statusTxt + (timer > 0 ? " (" + timer + "s)" : ""), cx, 40);
     }
 
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
