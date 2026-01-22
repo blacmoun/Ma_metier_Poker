@@ -16,16 +16,10 @@
         button.p5-btn { background: #FFD700; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         #myInfo { position: absolute; top: 20px; right: 20px; background: rgba(0, 0, 0, 0.8); border: 2px solid #FFD700; border-radius: 8px; padding: 10px; color: white; min-width: 150px; display: none; z-index: 100; }
         .card-img-ui { height: 100px; margin: 5px; border-radius: 5px; border: 1px solid #FFD700; background: #222; }
-        #restart-overlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; display: none; text-align: center; background: rgba(0,0,0,0.9); padding: 30px; border: 3px solid #FFD700; border-radius: 15px; }
         button:disabled { opacity: 0.3 !important; cursor: not-allowed !important; }
     </style>
 </head>
 <body>
-
-<div id="restart-overlay">
-    <h2 style="color: #FFD700;">PARTIE TERMINÉE</h2>
-    <button class="btn btn-warning btn-lg fw-bold mt-3" onclick="restartGame()">NOUVELLE PARTIE</button>
-</div>
 
 <div id="myInfo">
     <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Joueur</div>
@@ -89,16 +83,15 @@
         createLogoutButton();
         loadPlayers().then(() => {
             initButtons();
-            setInterval(loadPlayers, 2000);
+            setInterval(loadPlayers, 1500); // Polling un peu plus rapide pour la fluidité
         });
     }
 
     function resetGameState() {
         gameStarted = false; currentStatus = "waiting"; amISeated = false;
         myHand = []; communityCards = []; pot = 0;
-        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false, currentBet: 0};
+        for(let i=0; i<nPlayers; i++) playerData[i] = {name:"", chips:0, active:false, isMe:false, hasCards:false, currentBet: 0, hand:[]};
         document.getElementById('myInfo').style.display = 'none';
-        document.getElementById('restart-overlay').style.display = 'none';
     }
 
     function initButtons(){
@@ -124,14 +117,12 @@
             const res = await fetch("/game");
             const data = await res.json();
             currentStatus = data.status;
-            gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'finished'].includes(data.status));
+            gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
             timer = data.timer || 0;
             currentTurn = data.currentTurn;
             communityCards = data.community_cards || [];
             dealerIndex = data.dealerIndex;
             pot = data.pot || 0;
-
-            document.getElementById('restart-overlay').style.display = (currentStatus === 'finished') ? 'block' : 'none';
 
             let playersInServer = data.players || [];
             amISeated = false;
@@ -139,7 +130,8 @@
                 if(i < nPlayers){
                     playerData[i] = {
                         name: p.name, chips: p.chips, active: true, isMe: p.is_me,
-                        hasCards: p.has_cards, currentBet: p.current_bet || 0
+                        hasCards: p.has_cards, currentBet: p.current_bet || 0,
+                        hand: p.hand || []
                     };
                     if(p.is_me) { amISeated = true; myHand = p.hand || []; }
                 }
@@ -163,10 +155,8 @@
             document.getElementById('myInfo').style.display = 'block';
             document.getElementById('myName').innerText = me.name;
             document.getElementById('myChips').innerText = me.chips + " J";
-
-            document.getElementById('cards').innerHTML = myHand.length > 0 ?
+            document.getElementById('cards').innerHTML = (myHand && myHand.length > 0) ?
                 myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "En attente...";
-
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
                 communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
         }
@@ -189,11 +179,6 @@
             headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},
             body: JSON.stringify({name})
         });
-        location.reload();
-    }
-
-    async function restartGame() {
-        await fetch("/restart", { method: "POST", headers: { "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content } });
         location.reload();
     }
 
@@ -238,12 +223,13 @@
         textAlign(CENTER); fill("#FFD700"); textSize(24); textStyle(BOLD);
         text("POT: " + pot + " J", cx, cy + 85);
 
-        // BARRE DE TIMER (Visuelle seulement)
+        // TIMER VISUEL
         if (timer > 0 && currentStatus !== 'waiting') {
+            let maxT = (currentStatus === 'showdown' || currentStatus === 'countdown') ? 10 : 20;
             let barW = 200;
-            let progress = (timer / 20) * barW;
+            let progress = (timer / maxT) * barW;
             push(); stroke(255, 30); strokeWeight(4); line(cx - barW/2, 60, cx + barW/2, 60);
-            stroke(timer < 5 ? "#ff4444" : "#FFD700");
+            stroke(timer < 4 ? "#ff4444" : "#FFD700");
             line(cx - barW/2, 60, cx - barW/2 + progress, 60); pop();
         }
 
@@ -255,10 +241,8 @@
             let y = cy + ry*Math.sin(angle);
 
             if(playerData[i] && playerData[i].active){
-                // --- 1. AVATAR DU JOUEUR ---
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
 
-                // --- 2. JETON DEALER (D) ---
                 if ((gameStarted || currentStatus === 'countdown') && i === dealerIndex) {
                     push();
                     let dx = x - avatarW/2 - 15;
@@ -270,26 +254,19 @@
                     pop();
                 }
 
-                // --- 3. AFFICHAGE DES MISES (SB/BB) SUR LE TAPIS ---
                 if (playerData[i].currentBet > 0) {
                     push();
                     let bx = x;
                     let by = (i === 0) ? y + avatarH/2 + 30 : y - avatarH/2 - 30;
-
-                    // Badge de mise
                     fill("rgba(0,0,0,0.6)"); stroke("#FFD700"); strokeWeight(1);
                     rect(bx - 30, by - 12, 60, 24, 12);
-
-                    // Texte de la mise
                     noStroke(); fill(255); textAlign(CENTER, CENTER); textSize(12);
-                    let label = (i === dealerIndex) ? "SB: " : "BB: ";
-                    text(label + playerData[i].currentBet, bx, by);
+                    text(playerData[i].currentBet, bx, by);
                     pop();
                 }
 
-                // --- 4. INTERFACE DES INFOS (NOM / JETONS) ---
                 let infoW = 120, infoH = 50, uiX = x + avatarW/2 + 10, uiY = y - infoH/2;
-                let isHisTurn = (gameStarted && i === currentTurn && currentStatus !== 'finished');
+                let isHisTurn = (gameStarted && i === currentTurn && !['showdown', 'countdown'].includes(currentStatus));
 
                 if(isHisTurn){
                     push(); noFill(); stroke(255, 215, 0, 150 + sin(frameCount*0.1)*100); strokeWeight(4);
@@ -305,12 +282,15 @@
                 fill(isHisTurn ? 0 : "#FFD700"); text(playerData[i].chips + " J", uiX + infoW/2, uiY + 40);
                 pop();
 
-                // --- 5. CARTES DU JOUEUR ---
-                if ((gameStarted || currentStatus === "dealing") && playerData[i].hasCards) {
+                // CARTES
+                if (gameStarted && playerData[i].hasCards) {
                     let jcw = 50, jch = 70, cardX = uiX + infoW + 5, cardY = uiY - 10;
-                    if (playerData[i].isMe) {
-                        image(getCardImg(myHand[0]), cardX, cardY, jcw, jch);
-                        image(getCardImg(myHand[1]), cardX + 22, cardY, jcw, jch);
+                    // En phase SHOWDOWN, on affiche les cartes de tout le monde
+                    if (playerData[i].isMe || currentStatus === 'showdown') {
+                        if(playerData[i].hand && playerData[i].hand.length >= 2) {
+                            image(getCardImg(playerData[i].hand[0]), cardX, cardY, jcw, jch);
+                            image(getCardImg(playerData[i].hand[1]), cardX + 22, cardY, jcw, jch);
+                        }
                     } else {
                         image(cardImages['Dos.png'], cardX, cardY, jcw, jch);
                         image(cardImages['Dos.png'], cardX + 22, cardY, jcw, jch);
@@ -319,37 +299,18 @@
             }
         }
 
-// --- SECTION STATUT ET TIMER CORRIGÉE ---
         fill(255); textAlign(CENTER); textSize(26); textStyle(BOLD);
-
         let statusTxt = "";
         let displayTimer = Math.ceil(timer);
 
-        // 1. Gestion prioritaire du commencement
-        if (currentStatus === 'waiting') {
-            statusTxt = "EN ATTENTE DE JOUEURS";
-        }
-        else if (currentStatus === 'countdown') {
-            statusTxt = "COMMENCEMENT DANS :";
-            fill("#FFD700");
-        }
-        // 2. Gestion des tours de jeu
-        else if (!['finished'].includes(currentStatus)) {
-            if (playerData[currentTurn]?.isMe) {
-                statusTxt = "À VOUS DE JOUER";
-                fill("#FFD700");
-            } else {
-                statusTxt = "TOUR DE : " + (playerData[currentTurn]?.name || "...");
-                fill(255);
-            }
-        }
-        // 3. Fin de partie
+        if (currentStatus === 'waiting') statusTxt = "EN ATTENTE DE JOUEURS";
+        else if (currentStatus === 'countdown') { statusTxt = "DISTRIBUTION DANS :"; fill("#FFD700"); }
+        else if (currentStatus === 'showdown') { statusTxt = "ATTRIBUTION DES JETONS :"; fill("#FFD700"); }
         else {
-            statusTxt = "PARTIE TERMINÉE";
+            if (playerData[currentTurn]?.isMe) { statusTxt = "À VOUS DE JOUER"; fill("#FFD700"); }
+            else { statusTxt = "TOUR DE : " + (playerData[currentTurn]?.name || "..."); fill(255); }
         }
 
-        // Affichage du texte final + timer (si applicable)
-        // On n'affiche le timer que s'il est > 0 pour éviter le "0s" qui traîne
         let timerTxt = (displayTimer > 0) ? " " + displayTimer + "s" : "";
         text(statusTxt + timerTxt, cx, 45);
     }
