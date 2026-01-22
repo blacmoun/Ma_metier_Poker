@@ -60,41 +60,38 @@
                     <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
                     <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
                     <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
-                    <div class="container py-5 tab-pane fade" id="chat">
+                    <div class="container   tab-pane fade" id="chat">
+                        <div class="chat-header">
+                            <div>💬 Chat 1–1</div>
+                            <div class="who">
+                                <label>
+                                    <input type="radio" name="who" value="me" checked> Moi
+                                </label>
+                                <label>
+                                    <input type="radio" name="who" value="other"> Lui/Elle
+                                </label>
+                            </div>
+                        </div>
 
-                        <div class="chat-two">
-                            <div class="chat-header">
-                                <div>💬 Chat 1–1</div>
-                                <div class="who">
-                                    <label>
-                                        <input type="radio" name="who" value="me" checked> Moi
-                                    </label>
-                                    <label>
-                                        <input type="radio" name="who" value="other"> Lui/Elle
-                                    </label>
+                        <div class="chat-thread" id="chatThread">
+                            <!-- Exemples initiaux -->
+                            <div class="msg other">
+                                <div class="bubble">
+                                    Salut ! On commence la partie ?
+                                    <div class="meta">Lui • 12:03</div>
                                 </div>
                             </div>
-
-                            <div class="chat-thread" id="chatThread">
-                                <!-- Exemples initiaux -->
-                                <div class="msg other">
-                                    <div class="bubble">
-                                        Salut ! On commence la partie ?
-                                        <div class="meta">Lui • 12:03</div>
-                                    </div>
-                                </div>
-                                <div class="msg me">
-                                    <div class="bubble">
-                                        Yes, deal !
-                                        <div class="meta">Moi • 12:04</div>
-                                    </div>
+                            <div class="msg me">
+                                <div class="bubble">
+                                    Yes, deal !
+                                    <div class="meta">Moi • 12:04</div>
                                 </div>
                             </div>
+                        </div>
 
-                            <div class="chat-compose">
-                                <input id="chatInput" type="text" placeholder="Écris ton message..." />
-                                <button id="chatSend">Envoyer</button>
-                            </div>
+                        <div class="chat-compose">
+                            <input id="chatInput" type="text" placeholder="Écris ton message..." />
+                            <button id="chatSend">Envoyer</button>
                         </div>
                     </div>
                 </div>
