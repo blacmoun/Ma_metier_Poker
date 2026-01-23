@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet" />
     <style>
         body { margin:0; padding:0; overflow:hidden; background:#073870; font-family: 'Segoe UI', sans-serif; }
         #p5-zone { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; transition: height 0.4s ease; z-index: 0; }
@@ -38,10 +39,47 @@
                 <ul class="nav nav-tabs mb-2">
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
-                    <div class="tab-pane fade show active" id="cards">En attente...</div>
-                    <div class="tab-pane fade" id="board">Vide.</div>
+                    <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
+                    <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
+                    <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
+                    <div class="container   tab-pane fade" id="chat">
+                        <div class="chat-header">
+                            <div>💬 Chat 1–1</div>
+                            <div class="who">
+                                <label>
+                                    <input type="radio" name="who" value="me" checked> Moi
+                                </label>
+                                <label>
+                                    <input type="radio" name="who" value="other"> Lui/Elle
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="chat-thread" id="chatThread">
+                            <!-- Exemples initiaux -->
+                            <div class="msg other">
+                                <div class="bubble">
+                                    Salut ! On commence la partie ?
+                                    <div class="meta">Lui • 12:03</div>
+                                </div>
+                            </div>
+                            <div class="msg me">
+                                <div class="bubble">
+                                    Yes, deal !
+                                    <div class="meta">Moi • 12:04</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chat-compose">
+                            <input id="chatInput" type="text" placeholder="Écris ton message..." />
+                            <button id="chatSend">Envoyer</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="col-md-6">
@@ -316,6 +354,64 @@
     }
 
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
+
+
+    (function() {
+        const thread = document.getElementById('chatThread');
+        const input = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('chatSend');
+
+        // radio "Moi" / "Lui/Elle"
+        let who = 'me';
+        document.querySelectorAll('input[name="who"]').forEach(r => {
+            r.addEventListener('change', () => who = r.value);
+        });
+
+        // envoyer via bouton
+        sendBtn.addEventListener('click', sendMessage);
+
+        // envoyer via Enter
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        function sendMessage() {
+            const text = input.value.trim();
+            if (!text) return;
+
+            const author = who === 'me' ? 'Moi' : 'Lui';
+            addMessage(text, who, author);
+            input.value = '';
+            input.focus();
+
+            // Auto-scroll
+            thread.scrollTop = thread.scrollHeight;
+        }
+
+        function addMessage(text, side, author) {
+            const row = document.createElement('div');
+            row.className = `msg ${side}`;
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+
+            const safe = text.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+            const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' })
+                .format(new Date());
+
+            bubble.innerHTML = `
+      <div>${safe}</div>
+      <div class="meta">${author} • ${time}</div>
+    `;
+
+            row.appendChild(bubble);
+            thread.appendChild(row);
+        }
+    })();
+
 </script>
 </body>
 </html>
