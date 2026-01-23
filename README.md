@@ -55,7 +55,7 @@ Puis configurez votre base de données et autres variables nécessaires.
 ```bash
 php artisan serve
 ```
-L’application sera accessible sur [http://localhost:8000](http://localhost:8000) ou via votre **nom de domaine** configuré. //à changer plus tard
+L’application sera accessible sur [http://127.0.0.1:8000](http://127.0.0.1:8000) ou via [https://ma-poker.cld.education/](https://ma-poker.cld.education/).
 
 ---
 
