@@ -55,6 +55,11 @@ Puis configurez votre base de données et autres variables nécessaires.
 ```bash
 php artisan serve
 ```
+### Installé la base de données ( il faut bien configuré le .env avant )
+```bash
+php artisan migrate
+```
+### Rafraîchir la base de données
 ```bash
 php artisan migrate:fresh
 ```
