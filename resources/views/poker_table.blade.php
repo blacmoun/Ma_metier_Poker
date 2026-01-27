@@ -48,35 +48,15 @@
                     <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
                     <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
                     <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
-                    <div class="container   tab-pane fade" id="chat">
+                    <div class="container tab-pane fade" id="chat">
                         <div class="chat-header">
                             <div>💬 Chat 1–1</div>
                             <div class="who">
-                                <label>
-                                    <input type="radio" name="who" value="me" checked> Moi
-                                </label>
-                                <label>
-                                    <input type="radio" name="who" value="other"> Lui/Elle
-                                </label>
+                                <label><input type="radio" name="who" value="me" checked> Moi</label>
+                                <label><input type="radio" name="who" value="other"> Lui/Elle</label>
                             </div>
                         </div>
-
-                        <div class="chat-thread" id="chatThread">
-                            <!-- Exemples initiaux -->
-                            <div class="msg other">
-                                <div class="bubble">
-                                    Salut ! On commence la partie ?
-                                    <div class="meta">Lui • 12:03</div>
-                                </div>
-                            </div>
-                            <div class="msg me">
-                                <div class="bubble">
-                                    Yes, deal !
-                                    <div class="meta">Moi • 12:04</div>
-                                </div>
-                            </div>
-                        </div>
-
+                        <div class="chat-thread" id="chatThread"></div>
                         <div class="chat-compose">
                             <input id="chatInput" type="text" placeholder="Écris ton message..." />
                             <button id="chatSend">Envoyer</button>
@@ -107,7 +87,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     let isMenuOpen = false, imgPlayer, buttons = [], logoutBtn, playerData = [];
-    let previousChips = [0, 0];
+    let previousChips = [0, 0], isAllInState = false;
     const nPlayers = 2, avatarW = 80, avatarH = 100, tableW = 850, tableH = 400;
     let gameStarted = false, currentStatus = "waiting", amISeated = false, timer = 0, currentTurn = 0, dealerIndex = 0;
     let cardImages = {}, myHand = [], communityCards = [], pot = 0;
@@ -171,12 +151,9 @@
         try {
             const res = await fetch("/game");
             const data = await res.json();
-
-            // Avant mise à jour : On stocke les jetons pour comparer lors du showdown
             if (currentStatus !== 'showdown') {
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
-
             if (amISeated) {
                 let stillInGame = data.players.some(p => p.is_me);
                 if (!stillInGame) { location.reload(); return; }
@@ -202,10 +179,8 @@
         let amount = 0;
         if(action === 'raise') amount = document.getElementById('bet-range').value;
         if(['raise', 'allin'].includes(action)) spawnChips(currentTurn);
-
         const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
         buttonsToDisable.forEach(id => { let el = document.getElementById(id); if(el) el.disabled = true; });
-
         try {
             const response = await fetch("/action", {
                 method: "POST",
@@ -220,16 +195,14 @@
 
     function updateGameStateLocally(data) {
         currentStatus = data.status;
+        isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
         timer = data.timer;
         currentTurn = data.currentTurn;
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
-
-        let myBet = 0;
-        let otherMaxBet = 0;
-        let foundMe = false;
+        let myBet = 0, otherMaxBet = 0, foundMe = false;
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
@@ -250,28 +223,16 @@
         });
 
         amISeated = foundMe;
-
-        // UI Update
         updateUI();
 
-        // Logique des boutons
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
-
-        // Modifie le texte du bouton Call
         let callBtn = document.getElementById('act-call');
-        if(callBtn) {
-            if (otherMaxBet > myBet) {
-                callBtn.innerText = "SUIVRE " + (otherMaxBet - myBet);
-            } else {
-                callBtn.innerText = "PAROLE";
-            }
-        }
+        if(callBtn) callBtn.innerText = (otherMaxBet > myBet) ? "SUIVRE " + (otherMaxBet - myBet) : "PAROLE";
 
-        // Désactive les boutons si : Pas mon tour / Phase finie / All-in verrouillé
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
-            if(el) el.disabled = !(isMyTurn && playPhase && !data.is_all_in);
+            if(el) el.disabled = !(isMyTurn && playPhase && !isAllInState);
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
@@ -321,36 +282,24 @@
         for(let i=0; i<nPlayers; i++){
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle); let y = cy + ry*Math.sin(angle);
-
             if(playerData[i] && playerData[i].active){
-                // --- VISUEL GAGNANT ---
                 if (currentStatus === 'showdown' && playerData[i].chips > previousChips[i]) {
-                    push();
-                    fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
+                    push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
                     text("👑 GAGNANT 👑", x, y - avatarH/2 - 30 + bounce);
-                    stroke("#FFD700"); strokeWeight(4); noFill();
-                    ellipse(x, y, avatarW + 15, avatarH + 15);
-                    pop();
+                    stroke("#FFD700"); strokeWeight(4); noFill(); ellipse(x, y, avatarW + 15, avatarH + 15); pop();
                 }
-
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
-
-                // Dealer Button
                 if (i === dealerIndex) {
                     push(); let dx = x - avatarW/2 - 15; let dy = y + avatarH/4;
                     stroke(0); strokeWeight(1); fill(255); ellipse(dx, dy, 25, 25);
                     fill(0); textAlign(CENTER, CENTER); textSize(14); textStyle(BOLD); text("D", dx, dy + 1); pop();
                 }
-
-                // Affichage de la mise en cours
                 if (playerData[i].currentBet > 0) {
                     push(); let by = (i === 0) ? y + 80 : y - 80;
                     fill("rgba(0,0,0,0.7)"); stroke("#FFD700"); strokeWeight(2); rect(x - 35, by - 15, 70, 30, 15);
                     noStroke(); fill(255); textAlign(CENTER, CENTER); textSize(14); text(playerData[i].currentBet, x, by); pop();
                 }
-
-                // Zone infos joueur
                 let infoW = 120, infoH = 50, uiX = x + avatarW/2 + 10, uiY = y - infoH/2;
                 let isHisTurn = (gameStarted && i === currentTurn && !['showdown', 'countdown'].includes(currentStatus));
                 if(isHisTurn){
@@ -362,23 +311,16 @@
                 fill(isHisTurn ? 0 : 255); textAlign(CENTER); textSize(13); textStyle(BOLD); text(playerData[i].name, uiX + infoW/2, uiY + 20);
                 fill(isHisTurn ? 0 : "#FFD700"); text(playerData[i].chips + " J", uiX + infoW/2, uiY + 40); pop();
 
-                // --- CARTES ET COMBINAISON ---
                 if (gameStarted && playerData[i].hasCards) {
                     let jcw = 50, jch = 70, cardX = uiX + infoW + 5, cardY = uiY - 10;
                     if (playerData[i].isMe || currentStatus === 'showdown') {
                         if(playerData[i].hand && playerData[i].hand.length >= 2) {
                             image(getCardImg(playerData[i].hand[0]), cardX, cardY, jcw, jch);
                             image(getCardImg(playerData[i].hand[1]), cardX + 22, cardY, jcw, jch);
-
-                            // BANDEAU NOM DE LA MAIN (Showdown uniquement)
                             if (currentStatus === 'showdown' && playerData[i].handName) {
-                                push();
-                                fill(0, 220); noStroke();
-                                rect(cardX - 5, cardY + jch + 5, 80, 22, 5);
-                                fill("#FFD700"); textAlign(CENTER, CENTER);
-                                textSize(11); textStyle(BOLD);
-                                text(playerData[i].handName, cardX + 35, cardY + jch + 16);
-                                pop();
+                                push(); fill(0, 220); noStroke(); rect(cardX - 5, cardY + jch + 5, 80, 22, 5);
+                                fill("#FFD700"); textAlign(CENTER, CENTER); textSize(11); textStyle(BOLD);
+                                text(playerData[i].handName, cardX + 35, cardY + jch + 16); pop();
                             }
                         }
                     } else {
@@ -394,6 +336,7 @@
         if (currentStatus === 'waiting') statusText = "EN ATTENTE";
         else if (currentStatus === 'countdown') statusText = "LA PARTIE COMMENCE...";
         else if (currentStatus === 'showdown') statusText = "FIN DE LA MANCHE";
+        else if (isAllInState) statusText = "RÉSULTAT EN COURS...";
         else statusText = (playerData[currentTurn]?.isMe ? "À VOUS !" : "TOUR DE " + (playerData[currentTurn]?.name || "..."));
         text(statusText, cx, 45);
     }
@@ -410,63 +353,30 @@
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
 
-
     (function() {
         const thread = document.getElementById('chatThread');
         const input = document.getElementById('chatInput');
         const sendBtn = document.getElementById('chatSend');
-
-        // radio "Moi" / "Lui/Elle"
         let who = 'me';
-        document.querySelectorAll('input[name="who"]').forEach(r => {
-            r.addEventListener('change', () => who = r.value);
-        });
-
-        // envoyer via bouton
+        document.querySelectorAll('input[name="who"]').forEach(r => r.addEventListener('change', () => who = r.value));
         sendBtn.addEventListener('click', sendMessage);
-
-        // envoyer via Enter
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
         function sendMessage() {
-            const text = input.value.trim();
-            if (!text) return;
-
+            const text = input.value.trim(); if (!text) return;
             const author = who === 'me' ? 'Moi' : 'Lui';
             addMessage(text, who, author);
-            input.value = '';
-            input.focus();
-
-            // Auto-scroll
+            input.value = ''; input.focus();
             thread.scrollTop = thread.scrollHeight;
         }
-
         function addMessage(text, side, author) {
-            const row = document.createElement('div');
-            row.className = `msg ${side}`;
-
-            const bubble = document.createElement('div');
-            bubble.className = 'bubble';
-
+            const row = document.createElement('div'); row.className = `msg ${side}`;
+            const bubble = document.createElement('div'); bubble.className = 'bubble';
             const safe = text.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-            const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                .format(new Date());
-
-            bubble.innerHTML = `
-      <div>${safe}</div>
-      <div class="meta">${author} • ${time}</div>
-    `;
-
-            row.appendChild(bubble);
-            thread.appendChild(row);
+            const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+            bubble.innerHTML = `<div>${safe}</div><div class="meta">${author} • ${time}</div>`;
+            row.appendChild(bubble); thread.appendChild(row);
         }
     })();
-
 </script>
 </body>
 </html>

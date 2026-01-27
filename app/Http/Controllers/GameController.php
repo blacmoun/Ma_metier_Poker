@@ -39,12 +39,12 @@ class GameController extends Controller
         $game = Game::with('players')->first();
         if (!$game) $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
 
-        if ($game->players->count() < 2 && $game->status !== 'waiting') {
+        $count = $game->players->count();
+        if ($count < 2 && $game->status !== 'waiting') {
             $this->resetToWaiting($game);
-            return $this->gameResponse($game, $pokerService);
         }
 
-        if ($game->players->count() === 2 && $game->status === 'waiting') {
+        if ($count === 2 && $game->status === 'waiting') {
             $game->update(['status' => 'countdown', 'timer_at' => Carbon::now()->addSeconds(10)]);
         }
 
@@ -60,7 +60,9 @@ class GameController extends Controller
         $players = $game->players->values();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        if (!$me || $players[$game->current_turn]->id !== $me->id) return $this->gameResponse($game, $pokerService);
+        if (!$me || $game->status === 'showdown' || $players[$game->current_turn]->id !== $me->id) {
+            return $this->gameResponse($game, $pokerService);
+        }
 
         if ($request->action === 'fold') {
             $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
@@ -72,8 +74,7 @@ class GameController extends Controller
 
         if ($request->action === 'call') {
             $opp = $players[($game->current_turn == 0) ? 1 : 0];
-            $diff = $opp->current_bet - $me->current_bet;
-            $amt = min($me->chips, $diff);
+            $amt = min($me->chips, $opp->current_bet - $me->current_bet);
             $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
         } elseif ($request->action === 'raise') {
             $amt = min($me->chips, (int)$request->amount);
@@ -101,8 +102,8 @@ class GameController extends Controller
                 if ($game->status === 'pre-flop') {
                     $bb = ($game->dealer_index == 0) ? 1 : 0;
                     if ($game->current_turn == $bb) $isPhaseOver = true;
-                } else {
-                    if ($game->current_turn == 1) $isPhaseOver = true;
+                } else if ($game->current_turn == 1) {
+                    $isPhaseOver = true;
                 }
             }
         }
@@ -152,8 +153,10 @@ class GameController extends Controller
                 break;
             case 'showdown':
                 $bkr = $game->players()->where('chips', '<=', 0)->first();
-                if ($bkr) { $bkr->delete(); $this->resetToWaiting($game); }
-                else {
+                if ($bkr) {
+                    $bkr->delete();
+                    $this->resetToWaiting($game);
+                } else {
                     $game->update(['status' => 'countdown', 'timer_at' => $now->addSeconds(5), 'community_cards' => [], 'dealer_index' => ($game->dealer_index == 0 ? 1 : 0), 'pot' => 0]);
                     foreach ($game->players as $p) $p->update(['hand' => null, 'current_bet' => 0]);
                 }
@@ -181,7 +184,7 @@ class GameController extends Controller
     }
 
     public function resetToWaiting($game) {
-        $game->update(['status' => 'waiting', 'timer_at' => null, 'community_cards' => [], 'deck' => null, 'current_turn' => 0, 'pot' => 0]);
+        $game->update(['status' => 'waiting', 'timer_at' => null, 'community_cards' => [], 'deck' => null, 'current_turn' => 0, 'pot' => 0, 'dealer_index' => rand(0,1)]);
         Player::where('game_id', $game->id)->update(['hand' => null, 'current_bet' => 0]);
     }
 
