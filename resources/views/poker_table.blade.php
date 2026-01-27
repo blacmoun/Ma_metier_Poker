@@ -236,7 +236,7 @@
                 playerData[i] = {
                     name: p.name, chips: p.chips, active: true, isMe: p.is_me,
                     hasCards: p.has_cards, currentBet: p.current_bet || 0,
-                    hand: p.hand || [], handName: p.hand_name // Récupération du nom de la main envoyé par le PHP
+                    hand: p.hand || [], handName: p.hand_name
                 };
                 if(p.is_me) {
                     foundMe = true; amISeated = true;
@@ -250,15 +250,28 @@
         });
 
         amISeated = foundMe;
-        let callBtn = document.getElementById('act-call');
-        if(callBtn) callBtn.innerText = (otherMaxBet > myBet) ? "SUIVRE " + (otherMaxBet - myBet) : "PAROLE";
 
+        // UI Update
         updateUI();
 
+        // Logique des boutons
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
+
+        // Modifie le texte du bouton Call
+        let callBtn = document.getElementById('act-call');
+        if(callBtn) {
+            if (otherMaxBet > myBet) {
+                callBtn.innerText = "SUIVRE " + (otherMaxBet - myBet);
+            } else {
+                callBtn.innerText = "PAROLE";
+            }
+        }
+
+        // Désactive les boutons si : Pas mon tour / Phase finie / All-in verrouillé
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
-            let el = document.getElementById(id); if(el) el.disabled = !(isMyTurn && playPhase);
+            let el = document.getElementById(id);
+            if(el) el.disabled = !(isMyTurn && playPhase && !data.is_all_in);
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();

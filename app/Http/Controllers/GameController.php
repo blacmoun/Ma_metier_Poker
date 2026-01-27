@@ -31,29 +31,24 @@ class GameController extends Controller
         $totalBets = $game->players->sum('current_bet');
         if ($totalBets > 0) {
             $game->increment('pot', $totalBets);
-            foreach ($game->players as $p) {
-                $p->update(['current_bet' => 0]);
-            }
+            foreach ($game->players as $p) $p->update(['current_bet' => 0]);
         }
     }
 
     public function show(PokerService $pokerService) {
         $game = Game::with('players')->first();
-        if (!$game) {
-            $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
-        }
+        if (!$game) $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
 
-        $now = Carbon::now();
         if ($game->players->count() < 2 && $game->status !== 'waiting') {
             $this->resetToWaiting($game);
             return $this->gameResponse($game, $pokerService);
         }
 
         if ($game->players->count() === 2 && $game->status === 'waiting') {
-            $game->update(['status' => 'countdown', 'timer_at' => $now->copy()->addSeconds(10)]);
+            $game->update(['status' => 'countdown', 'timer_at' => Carbon::now()->addSeconds(10)]);
         }
 
-        if ($game->timer_at && $now->greaterThanOrEqualTo(Carbon::parse($game->timer_at))) {
+        if ($game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at))) {
             $this->processTurnAction($game, $pokerService);
         }
 
@@ -76,13 +71,13 @@ class GameController extends Controller
         }
 
         if ($request->action === 'call') {
-            $opponent = $players[($game->current_turn == 0) ? 1 : 0];
-            $diff = $opponent->current_bet - $me->current_bet;
-            $amount = min($me->chips, $diff);
-            $me->update(['current_bet' => $me->current_bet + $amount, 'chips' => $me->chips - $amount]);
+            $opp = $players[($game->current_turn == 0) ? 1 : 0];
+            $diff = $opp->current_bet - $me->current_bet;
+            $amt = min($me->chips, $diff);
+            $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
         } elseif ($request->action === 'raise') {
-            $amount = min($me->chips, (int)$request->amount);
-            $me->update(['current_bet' => $me->current_bet + $amount, 'chips' => $me->chips - $amount]);
+            $amt = min($me->chips, (int)$request->amount);
+            $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
         } elseif ($request->action === 'allin') {
             $me->update(['current_bet' => $me->current_bet + $me->chips, 'chips' => 0]);
         }
@@ -101,12 +96,11 @@ class GameController extends Controller
 
         $isPhaseOver = false;
         if ($betsEqual) {
-            if ($someoneZero) {
-                $isPhaseOver = true;
-            } else {
+            if ($someoneZero) $isPhaseOver = true;
+            else {
                 if ($game->status === 'pre-flop') {
-                    $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                    if ($game->current_turn == $bbIndex) $isPhaseOver = true;
+                    $bb = ($game->dealer_index == 0) ? 1 : 0;
+                    if ($game->current_turn == $bb) $isPhaseOver = true;
                 } else {
                     if ($game->current_turn == 1) $isPhaseOver = true;
                 }
@@ -116,10 +110,7 @@ class GameController extends Controller
         if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            $game->update([
-                'current_turn' => ($game->current_turn == 0) ? 1 : 0,
-                'timer_at' => Carbon::now()->addSeconds($this->turnDuration)
-            ]);
+            $game->update(['current_turn' => ($game->current_turn == 0) ? 1 : 0, 'timer_at' => Carbon::now()->addSeconds($this->turnDuration)]);
         }
     }
 
@@ -127,8 +118,8 @@ class GameController extends Controller
         $now = Carbon::now();
         $players = $game->players->values();
         $deck = $game->deck ?? [];
-        $autoMode = (($players[0]->chips === 0 || $players[1]->chips === 0) && ($players[0]->current_bet === $players[1]->current_bet));
-        $duration = $autoMode ? $this->allInSpeed : $this->turnDuration;
+        $auto = (($players[0]->chips == 0 || $players[1]->chips == 0) && ($players[0]->current_bet == $players[1]->current_bet));
+        $duration = $auto ? $this->allInSpeed : $this->turnDuration;
 
         switch ($game->status) {
             case 'countdown':
@@ -160,11 +151,9 @@ class GameController extends Controller
                 $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => $now->addSeconds($this->showdownDuration)]);
                 break;
             case 'showdown':
-                $bankrupt = $game->players()->where('chips', '<=', 0)->first();
-                if ($bankrupt) {
-                    $bankrupt->delete();
-                    $this->resetToWaiting($game);
-                } else {
+                $bkr = $game->players()->where('chips', '<=', 0)->first();
+                if ($bkr) { $bkr->delete(); $this->resetToWaiting($game); }
+                else {
                     $game->update(['status' => 'countdown', 'timer_at' => $now->addSeconds(5), 'community_cards' => [], 'dealer_index' => ($game->dealer_index == 0 ? 1 : 0), 'pot' => 0]);
                     foreach ($game->players as $p) $p->update(['hand' => null, 'current_bet' => 0]);
                 }
@@ -173,25 +162,19 @@ class GameController extends Controller
     }
 
     public function gameResponse($game, $pokerService = null) {
-        $players = $game->players;
-        $isLocked = ($players->contains('chips', 0) && ($players[0]->current_bet === $players[1]->current_bet) && $game->status !== 'showdown');
-
+        $p = $game->players;
+        $isLocked = ($p->contains('chips', 0) && ($p[0]->current_bet === $p[1]->current_bet) && $game->status !== 'showdown');
         return response()->json([
-            'players' => $players->map(function($p) use ($game, $pokerService) {
-                $hName = null;
-                if ($game->status === 'showdown' && $pokerService && !empty($p->hand)) {
-                    $hName = $this->getHandRankName($pokerService->evaluateHand($p->hand, $game->community_cards));
-                }
+            'players' => $p->map(function($player) use ($game, $pokerService) {
                 return [
-                    'name' => $p->name, 'chips' => $p->chips, 'current_bet' => $p->current_bet,
-                    'is_me' => ($p->session_token === session('player_token')),
-                    'hand' => ($p->session_token === session('player_token') || $game->status === 'showdown') ? $p->hand : null,
-                    'has_cards' => !empty($p->hand), 'hand_name' => $hName
+                    'name' => $player->name, 'chips' => $player->chips, 'current_bet' => $player->current_bet,
+                    'is_me' => ($player->session_token === session('player_token')),
+                    'hand' => ($player->session_token === session('player_token') || $game->status === 'showdown') ? $player->hand : null,
+                    'has_cards' => !empty($player->hand),
+                    'hand_name' => ($game->status === 'showdown' && $pokerService && !empty($player->hand)) ? $this->getHandRankName($pokerService->evaluateHand($player->hand, $game->community_cards)) : null
                 ];
             }),
-            'community_cards' => $game->community_cards ?? [],
-            'status' => $game->status,
-            'is_all_in' => $isLocked,
+            'community_cards' => $game->community_cards, 'status' => $game->status, 'is_all_in' => $isLocked,
             'timer' => $game->timer_at ? max(0, Carbon::now()->diffInSeconds(Carbon::parse($game->timer_at), false)) : 0,
             'currentTurn' => (int)$game->current_turn, 'dealerIndex' => (int)$game->dealer_index, 'pot' => $game->pot
         ]);
@@ -212,12 +195,8 @@ class GameController extends Controller
     }
 
     public function logout() {
-        $player = Player::where('session_token', session('player_token'))->first();
-        if ($player) {
-            $game = Game::find($player->game_id);
-            if ($game) $this->resetToWaiting($game);
-            $player->delete();
-        }
+        $p = Player::where('session_token', session('player_token'))->first();
+        if ($p) { $g = Game::find($p->game_id); if ($g) $this->resetToWaiting($g); $p->delete(); }
         session()->forget('player_token');
         return response()->json(['message' => 'Success']);
     }
