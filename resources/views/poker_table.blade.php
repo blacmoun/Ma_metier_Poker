@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Poker Pro - J Edition</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="css/style.css" rel="stylesheet" />
     <style>
         body { margin:0; padding:0; overflow:hidden; background:#073870; font-family: 'Segoe UI', sans-serif; }
         #p5-zone { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; transition: height 0.4s ease; z-index: 0; }
@@ -25,9 +24,9 @@
 <body>
 
 <div id="myInfo">
-    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Joueur</div>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Player</div>
     <span id="myName" style="font-size: 18px; font-weight: bold; display: block;">-</span>
-    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase; margin-top:5px;">Solde</div>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase; margin-top:5px;">Balance</div>
     <span id="myChips" style="font-size: 18px; font-weight: bold; display: block;">0 J</span>
 </div>
 
@@ -39,45 +38,30 @@
         <div class="row">
             <div class="col-md-5">
                 <ul class="nav nav-tabs mb-2">
-                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">My Hand</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Table</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
-                    <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
-                    <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
-                    <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
-                    <div class="container tab-pane fade" id="chat">
-                        <div class="chat-header">
-                            <div>💬 Chat 1–1</div>
-                            <div class="who">
-                                <label><input type="radio" name="who" value="me" checked> Moi</label>
-                                <label><input type="radio" name="who" value="other"> Lui/Elle</label>
-                            </div>
-                        </div>
-                        <div class="chat-thread" id="chatThread"></div>
-                        <div class="chat-compose">
-                            <input id="chatInput" type="text" placeholder="Écris ton message..." />
-                            <button id="chatSend">Envoyer</button>
-                        </div>
-                    </div>
+                    <div class="tab-pane fade show active" id="cards">Waiting for cards...</div>
+                    <div class="tab-pane fade" id="board">No cards on table.</div>
+                    <div class="tab-pane fade" id="stats">Session statistics...</div>
                 </div>
             </div>
 
             <div class="col-md-7">
                 <div class="d-flex align-items-center gap-3 mb-3 bg-secondary bg-opacity-25 p-2 rounded">
-                    <span class="small fw-bold text-uppercase">Mise :</span>
+                    <span class="small fw-bold text-uppercase">Bet:</span>
                     <input type="range" id="bet-range" class="bet-slider" min="10" max="100" value="20" oninput="updateBetDisplay()">
                     <span id="bet-value" class="bet-value-display">20</span>
                     <span class="small fw-bold">J</span>
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">SUIVRE</button>
-                    <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RELANCER</button>
+                    <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">CALL</button>
+                    <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RAISE</button>
                     <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="handlePlay('allin')">ALL-IN</button>
-                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">COUCHER</button>
+                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">FOLD</button>
                 </div>
             </div>
         </div>
@@ -139,7 +123,7 @@
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle);
             let y = cy + ry*Math.sin(angle);
-            let btn = createButton("Rejoindre");
+            let btn = createButton("Join Table");
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x-50, y+avatarH/2+10);
             btn.mousePressed(() => joinPlayer(i));
@@ -169,9 +153,9 @@
             document.getElementById('myName').innerText = me.name;
             document.getElementById('myChips').innerText = me.chips + " J";
             document.getElementById('cards').innerHTML = (myHand && myHand.length > 0) ?
-                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "En attente...";
+                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Waiting...";
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
-                communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
+                communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Empty.";
         }
     }
 
@@ -179,8 +163,10 @@
         let amount = 0;
         if(action === 'raise') amount = document.getElementById('bet-range').value;
         if(['raise', 'allin'].includes(action)) spawnChips(currentTurn);
+
         const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
         buttonsToDisable.forEach(id => { let el = document.getElementById(id); if(el) el.disabled = true; });
+
         try {
             const response = await fetch("/action", {
                 method: "POST",
@@ -228,7 +214,7 @@
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
         let callBtn = document.getElementById('act-call');
-        if(callBtn) callBtn.innerText = (otherMaxBet > myBet) ? "SUIVRE " + (otherMaxBet - myBet) : "PAROLE";
+        if(callBtn) callBtn.innerText = (otherMaxBet > myBet) ? "CALL " + (otherMaxBet - myBet) : "CHECK";
 
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
@@ -286,7 +272,7 @@
                 if (currentStatus === 'showdown' && playerData[i].chips > previousChips[i]) {
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
-                    text("👑 GAGNANT 👑", x, y - avatarH/2 - 30 + bounce);
+                    text("👑 WINNER 👑", x, y - avatarH/2 - 30 + bounce);
                     stroke("#FFD700"); strokeWeight(4); noFill(); ellipse(x, y, avatarW + 15, avatarH + 15); pop();
                 }
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
@@ -333,50 +319,25 @@
 
         fill(255); textAlign(CENTER); textSize(26); textStyle(BOLD);
         let statusText = "";
-        if (currentStatus === 'waiting') statusText = "EN ATTENTE";
-        else if (currentStatus === 'countdown') statusText = "LA PARTIE COMMENCE...";
-        else if (currentStatus === 'showdown') statusText = "FIN DE LA MANCHE";
-        else if (isAllInState) statusText = "RÉSULTAT EN COURS...";
-        else statusText = (playerData[currentTurn]?.isMe ? "À VOUS !" : "TOUR DE " + (playerData[currentTurn]?.name || "..."));
+        if (currentStatus === 'waiting') statusText = "WAITING FOR PLAYERS";
+        else if (currentStatus === 'countdown') statusText = "STARTING SOON...";
+        else if (currentStatus === 'showdown') statusText = "ROUND OVER";
+        else if (isAllInState) statusText = "RESULT IN PROGRESS...";
+        else statusText = (playerData[currentTurn]?.isMe ? "YOUR TURN!" : (playerData[currentTurn]?.name || "PLAYER") + "'S TURN");
         text(statusText, cx, 45);
     }
 
     async function joinPlayer(index){
-        let name = prompt("Nom :"); if(!name) return;
+        let name = prompt("Name:"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
         location.reload();
     }
     function createLogoutButton(){
-        logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
+        logoutBtn = createButton("Leave"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
         logoutBtn.mousePressed(async ()=>{ await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}}); location.reload(); });
     }
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
-
-    (function() {
-        const thread = document.getElementById('chatThread');
-        const input = document.getElementById('chatInput');
-        const sendBtn = document.getElementById('chatSend');
-        let who = 'me';
-        document.querySelectorAll('input[name="who"]').forEach(r => r.addEventListener('change', () => who = r.value));
-        sendBtn.addEventListener('click', sendMessage);
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-        function sendMessage() {
-            const text = input.value.trim(); if (!text) return;
-            const author = who === 'me' ? 'Moi' : 'Lui';
-            addMessage(text, who, author);
-            input.value = ''; input.focus();
-            thread.scrollTop = thread.scrollHeight;
-        }
-        function addMessage(text, side, author) {
-            const row = document.createElement('div'); row.className = `msg ${side}`;
-            const bubble = document.createElement('div'); bubble.className = 'bubble';
-            const safe = text.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-            const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(new Date());
-            bubble.innerHTML = `<div>${safe}</div><div class="meta">${author} • ${time}</div>`;
-            row.appendChild(bubble); thread.appendChild(row);
-        }
-    })();
 </script>
 </body>
 </html>
