@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
     <title>Poker Pro - J Edition</title>
@@ -24,9 +24,9 @@
 <body>
 
 <div id="myInfo">
-    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Player</div>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase;">Joueur</div>
     <span id="myName" style="font-size: 18px; font-weight: bold; display: block;">-</span>
-    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase; margin-top:5px;">Balance</div>
+    <div style="color: #FFD700; font-size: 10px; text-transform: uppercase; margin-top:5px;">Solde</div>
     <span id="myChips" style="font-size: 18px; font-weight: bold; display: block;">0 J</span>
 </div>
 
@@ -38,30 +38,30 @@
         <div class="row">
             <div class="col-md-5">
                 <ul class="nav nav-tabs mb-2">
-                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">My Hand</button></li>
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Table</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
-                    <div class="tab-pane fade show active" id="cards">Waiting for cards...</div>
-                    <div class="tab-pane fade" id="board">No cards on table.</div>
-                    <div class="tab-pane fade" id="stats">Session statistics...</div>
+                    <div class="tab-pane fade show active" id="cards">En attente des cartes...</div>
+                    <div class="tab-pane fade" id="board">Aucune carte sur la table.</div>
+                    <div class="tab-pane fade" id="stats">Statistiques de session...</div>
                 </div>
             </div>
 
             <div class="col-md-7">
                 <div class="d-flex align-items-center gap-3 mb-3 bg-secondary bg-opacity-25 p-2 rounded">
-                    <span class="small fw-bold text-uppercase">Bet:</span>
+                    <span class="small fw-bold text-uppercase">Mise :</span>
                     <input type="range" id="bet-range" class="bet-slider" min="10" max="100" value="20" oninput="updateBetDisplay()">
                     <span id="bet-value" class="bet-value-display">20</span>
                     <span class="small fw-bold">J</span>
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">CALL</button>
-                    <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RAISE</button>
-                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="handlePlay('allin')">ALL-IN</button>
-                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">FOLD</button>
+                    <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">SUIVRE</button>
+                    <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RELANCER</button>
+                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="handlePlay('allin')">TAPIS</button>
+                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">COUCHER</button>
                 </div>
             </div>
         </div>
@@ -123,7 +123,7 @@
             let angle = -Math.PI/2 + i*Math.PI;
             let x = cx + rx*Math.cos(angle);
             let y = cy + ry*Math.sin(angle);
-            let btn = createButton("Join Table");
+            let btn = createButton("Rejoindre");
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x-50, y+avatarH/2+10);
             btn.mousePressed(() => joinPlayer(i));
@@ -153,9 +153,9 @@
             document.getElementById('myName').innerText = me.name;
             document.getElementById('myChips').innerText = me.chips + " J";
             document.getElementById('cards').innerHTML = (myHand && myHand.length > 0) ?
-                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Waiting...";
+                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
-                communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Empty.";
+                communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
         }
     }
 
@@ -214,7 +214,14 @@
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
         let callBtn = document.getElementById('act-call');
-        if(callBtn) callBtn.innerText = (otherMaxBet > myBet) ? "CALL " + (otherMaxBet - myBet) : "CHECK";
+
+        if(callBtn) {
+            if (otherMaxBet > myBet) {
+                callBtn.innerText = "SUIVRE " + (otherMaxBet - myBet);
+            } else {
+                callBtn.innerText = "PAROLE";
+            }
+        }
 
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
@@ -248,7 +255,7 @@
             for (let j = 0; j < communityCards.length; j++) image(getCardImg(communityCards[j]), startX + j * (cw + gap), cy - ch/2 - 20, cw, ch);
         }
 
-        textAlign(CENTER); fill("#FFD700"); textSize(24); textStyle(BOLD); text("POT: " + pot + " J", cx, cy + 85);
+        textAlign(CENTER); fill("#FFD700"); textSize(24); textStyle(BOLD); text("POT : " + pot + " J", cx, cy + 85);
 
         for(let i = chipParticles.length-1; i>=0; i--) {
             let p = chipParticles[i]; p.t += p.s;
@@ -272,7 +279,7 @@
                 if (currentStatus === 'showdown' && playerData[i].chips > previousChips[i]) {
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
-                    text("👑 WINNER 👑", x, y - avatarH/2 - 30 + bounce);
+                    text("👑 GAGNANT 👑", x, y - avatarH/2 - 30 + bounce);
                     stroke("#FFD700"); strokeWeight(4); noFill(); ellipse(x, y, avatarW + 15, avatarH + 15); pop();
                 }
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
@@ -319,21 +326,21 @@
 
         fill(255); textAlign(CENTER); textSize(26); textStyle(BOLD);
         let statusText = "";
-        if (currentStatus === 'waiting') statusText = "WAITING FOR PLAYERS";
-        else if (currentStatus === 'countdown') statusText = "STARTING SOON...";
-        else if (currentStatus === 'showdown') statusText = "ROUND OVER";
-        else if (isAllInState) statusText = "RESULT IN PROGRESS...";
-        else statusText = (playerData[currentTurn]?.isMe ? "YOUR TURN!" : (playerData[currentTurn]?.name || "PLAYER") + "'S TURN");
+        if (currentStatus === 'waiting') statusText = "ATTENTE DE JOUEURS";
+        else if (currentStatus === 'countdown') statusText = "DÉMARRAGE IMMINENT...";
+        else if (currentStatus === 'showdown') statusText = "FIN DE MANCHE";
+        else if (isAllInState) statusText = "RÉSULTAT EN COURS...";
+        else statusText = (playerData[currentTurn]?.isMe ? "C'EST VOTRE TOUR !" : "TOUR DE " + (playerData[currentTurn]?.name || "JOUEUR"));
         text(statusText, cx, 45);
     }
 
     async function joinPlayer(index){
-        let name = prompt("Name:"); if(!name) return;
+        let name = prompt("Votre nom :"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
         location.reload();
     }
     function createLogoutButton(){
-        logoutBtn = createButton("Leave"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
+        logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
         logoutBtn.mousePressed(async ()=>{ await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}}); location.reload(); });
     }
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
