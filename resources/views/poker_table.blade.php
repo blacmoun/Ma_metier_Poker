@@ -200,6 +200,12 @@
     }
 
     function updateGameStateLocally(data) {
+        // Empêche le rebond : si on est déjà en countdown et que le serveur
+        // renvoie un timer plus grand que l'actuel, on ignore pour éviter le reset visuel
+        if (currentStatus === "countdown" && data.status === "countdown" && data.timer > timer + 2) {
+            return;
+        }
+
         if (currentStatus !== data.status) {
             timer = data.timer;
         } else {
