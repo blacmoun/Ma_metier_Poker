@@ -43,7 +43,7 @@ class GameController extends Controller
             $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
         }
 
-        $players = $game->players->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         $count = $players->count();
 
         if ($count < 2 && $game->status !== 'waiting') {
@@ -85,13 +85,11 @@ class GameController extends Controller
 
     private function handleFold($game, $players) {
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
-
         $p1 = $players[0];
         $p2 = $players[1];
 
         $callAmount = min($p1->current_bet, $p2->current_bet);
         $deadMoney = $game->pot + ($callAmount * 2);
-
         $winner->increment('chips', $deadMoney);
 
         if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
@@ -288,11 +286,8 @@ class GameController extends Controller
         if ($p) {
             $gameId = $p->game_id;
             $p->delete();
-
             $g = Game::find($gameId);
-            if ($g) {
-                $this->resetToWaiting($g);
-            }
+            if ($g) $this->resetToWaiting($g);
         }
         session()->forget('player_token');
         return response()->json(['message' => 'Success']);
