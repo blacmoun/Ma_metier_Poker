@@ -119,7 +119,7 @@ class GameController extends Controller
             return;
         }
 
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && ($p1->current_bet === $p2->current_bet || $p1->chips === 0 && $p1->current_bet <= $p2->current_bet || $p2->chips === 0 && $p2->current_bet <= $p1->current_bet);
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && ($p1->current_bet === $p2->current_bet || ($p1->chips === 0 && $p1->current_bet <= $p2->current_bet) || ($p2->chips === 0 && $p2->current_bet <= $p1->current_bet));
         $isPhaseOver = false;
 
         if ($someoneZeroAndCalled) {
@@ -129,7 +129,8 @@ class GameController extends Controller
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                if ($game->current_turn == 1) $isPhaseOver = true;
+                $lastToAct = ($game->dealer_index == 0) ? 0 : 1;
+                if ($game->current_turn == $lastToAct) $isPhaseOver = true;
             }
         }
 
@@ -156,6 +157,7 @@ class GameController extends Controller
 
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
+        $firstToAct = ($game->dealer_index == 0) ? 1 : 0;
 
         switch ($game->status) {
             case 'countdown':
@@ -177,14 +179,14 @@ class GameController extends Controller
 
             case 'pre-flop':
                 $this->collectBets($game);
-                $game->update(['status' => 'flop', 'community_cards' => $pokerService->deal($deck, 3), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => 0]);
+                $game->update(['status' => 'flop', 'community_cards' => $pokerService->deal($deck, 3), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => $firstToAct]);
                 break;
 
             case 'flop':
             case 'turn':
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'flop') ? 'turn' : 'river';
-                $game->update(['status' => $nextStatus, 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => 0]);
+                $game->update(['status' => $nextStatus, 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => $firstToAct]);
                 break;
 
             case 'river':
