@@ -166,6 +166,13 @@
     }
 
     async function handlePlay(action) {
+        // Désactivation immédiate anti-spam
+        const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
+        buttonsToDisable.forEach(id => {
+            let el = document.getElementById(id);
+            if(el) el.disabled = true;
+        });
+
         let amount = 0;
         let betRange = document.getElementById('bet-range');
         if(action === 'raise') amount = betRange.value;
@@ -173,19 +180,24 @@
 
         if(['raise', 'allin'].includes(action)) spawnChips(currentTurn);
 
-        const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
-        buttonsToDisable.forEach(id => { let el = document.getElementById(id); if(el) el.disabled = true; });
-
         try {
             const response = await fetch("/action", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content },
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
                 body: JSON.stringify({ action: action, amount: amount })
             });
+
+            // On attend la réponse officielle du serveur pour ré-actualiser l'état
             const data = await response.json();
-            if (response.ok) updateGameStateLocally(data);
-            else loadPlayers();
-        } catch (e) { console.error(e); }
+            updateGameStateLocally(data);
+        } catch (e) {
+            console.error(e);
+            // En cas d'erreur, on recharge pour débloquer si besoin
+            loadPlayers();
+        }
     }
 
     function updateGameStateLocally(data) {
@@ -193,26 +205,39 @@
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
         timer = data.timer;
-        currentTurn = data.currentTurn;
+        currentTurn = parseInt(data.currentTurn); // Force l'entier
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
-        let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
+
+        let foundMe = false;
+        let myChips = 0;
+        let myBet = 0;
+        let otherMaxBet = 0;
+        let isItMyTurn = false;
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
                 playerData[i] = {
-                    name: p.name, chips: p.chips, active: true, isMe: p.is_me,
-                    hasCards: p.has_cards, currentBet: p.current_bet || 0,
-                    hand: p.hand || [], handName: p.hand_name
+                    name: p.name,
+                    chips: p.chips,
+                    active: true,
+                    isMe: p.is_me,
+                    hasCards: p.has_cards,
+                    current_bet: p.current_bet || 0, // Attention au nommage ici
+                    currentBet: p.current_bet || 0,
+                    hand: p.hand || [],
+                    handName: p.hand_name
                 };
+
                 if(p.is_me) {
-                    foundMe = true; amISeated = true;
+                    foundMe = true;
+                    amISeated = true;
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
                     myChips = p.chips;
-                    // FIX: Verification directe sur l'index de la boucle
-                    if(i === data.currentTurn) isItMyTurn = true;
+                    // Vérification CRUCIALE du tour
+                    if(i === currentTurn) isItMyTurn = true;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
                 }
@@ -222,19 +247,23 @@
         amISeated = foundMe;
         updateUI();
 
+        // Gestion de l'interface de mise
         let betRange = document.getElementById('bet-range');
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
         if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            let minRaise = otherMaxBet > 0 ? otherMaxBet + Math.max(20, otherMaxBet) : 20;
+            // On ne peut relancer qu'au dessus de la mise adverse
+            let minRaise = otherMaxBet > 0 ? otherMaxBet + 20 : 20;
 
-            betRange.min = Math.min(myChips, Math.max(20, minRaise));
+            betRange.min = Math.min(myChips, minRaise);
             betRange.max = myChips;
+            // Ajuster la valeur si elle est hors limites
             if (parseInt(betRange.value) < betRange.min) betRange.value = betRange.min;
             updateBetDisplay();
         }
 
+        // Mise à jour du bouton SUIVRE/PAROLE
         let callBtn = document.getElementById('act-call');
         if(callBtn) {
             if (otherMaxBet > myBet) {
@@ -245,9 +274,13 @@
             }
         }
 
+        // BLOCAGE FINAL DES BOUTONS
+        // On bloque si : Pas mon tour, OU phase de résultat, OU tapis déjà engagé
+        const canPlay = isItMyTurn && playPhase && !isAllInState;
+
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
-            if(el) el.disabled = !(isItMyTurn && playPhase);
+            if(el) el.disabled = !canPlay;
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
