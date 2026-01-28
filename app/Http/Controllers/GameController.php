@@ -165,10 +165,8 @@ class GameController extends Controller
 
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
-
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
-        $firstToAct = ($game->dealer_index == 0) ? 1 : 0;
 
         switch ($game->status) {
             case 'countdown':
@@ -192,14 +190,18 @@ class GameController extends Controller
             case 'flop':
             case 'turn':
                 $this->collectBets($game);
+
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
+
+                $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
+
                 $game->update([
                     'status' => $nextStatus,
                     'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, $cardsToDeal)),
                     'deck' => $deck,
                     'timer_at' => $now->addSeconds($duration),
-                    'current_turn' => $firstToAct
+                    'current_turn' => $nextToAct
                 ]);
                 break;
 
