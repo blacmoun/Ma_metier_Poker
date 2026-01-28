@@ -77,6 +77,7 @@
     let cardImages = {}, myHand = [], communityCards = [], pot = 0;
     let chipParticles = [];
 
+    // Timer local indépendant
     setInterval(() => { if(timer > 0) timer--; }, 1000);
 
     function updateBetDisplay() {
@@ -137,6 +138,8 @@
         try {
             const res = await fetch("/game");
             const data = await res.json();
+
+            // On mémorise les chips avant mise à jour pour l'animation gagnant
             if (currentStatus !== 'showdown') {
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
@@ -189,25 +192,25 @@
     }
 
     function updateGameStateLocally(data) {
-        // Si on reçoit un état identique avec un timer plus élevé, c'est un doublon du setInterval
-        // on l'ignore pour éviter de relancer l'animation du timer
-        if (currentStatus === data.status && data.status === "countdown" && data.timer > timer) {
+        // ANTI-REBOND : Si on est déjà en countdown et que le serveur envoie un timer plus grand, on ignore.
+        if (currentStatus === "countdown" && data.status === "countdown" && data.timer > timer) {
             return;
+        }
+
+        // Synchro intelligente du timer (seulement si gros écart ou changement de phase)
+        if (currentStatus !== data.status || Math.abs(timer - data.timer) > 2) {
+            timer = data.timer;
         }
 
         currentStatus = data.status;
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
 
-        // Synchronisation intelligente du timer
-        if (Math.abs(timer - data.timer) > 2 || currentStatus !== data.status) {
-            timer = data.timer;
-        }
-
         currentTurn = data.currentTurn;
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
+
         let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
 
         data.players.forEach((p, i) => {
@@ -237,9 +240,9 @@
 
         if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            let minRaise = otherMaxBet > 0 ? otherMaxBet + Math.max(20, otherMaxBet) : 20;
+            let minRaise = otherMaxBet > 0 ? (otherMaxBet + 20) : 20;
 
-            betRange.min = Math.min(myChips, Math.max(20, minRaise));
+            betRange.min = Math.min(myChips, minRaise);
             betRange.max = myChips;
             if (parseInt(betRange.value) < betRange.min) betRange.value = betRange.min;
             updateBetDisplay();
@@ -255,9 +258,11 @@
             }
         }
 
+        // Contrôle des boutons
+        const canPlay = isItMyTurn && playPhase && !isAllInState;
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
-            if(el) el.disabled = !(isItMyTurn && playPhase);
+            if(el) el.disabled = !canPlay;
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
@@ -297,7 +302,7 @@
         }
 
         if (timer > 0 && currentStatus !== 'waiting') {
-            let maxT = (currentStatus === 'showdown' || currentStatus === 'countdown') ? 10 : 20;
+            let maxT = (currentStatus === 'showdown' || currentStatus === 'countdown') ? (currentStatus === 'countdown' ? 10 : 8) : 20;
             let barW = 200; let progress = (timer / maxT) * barW;
             push(); stroke(255, 30); strokeWeight(4); line(cx - barW/2, 60, cx + barW/2, 60);
             stroke(timer < 4 ? "#ff4444" : "#FFD700"); line(cx - barW/2, 60, cx - barW/2 + progress, 60); pop();
@@ -371,6 +376,7 @@
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
         loadPlayers().then(() => initButtons());
     }
+
     function createLogoutButton(){
         logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
         logoutBtn.mousePressed(async ()=>{
@@ -380,6 +386,7 @@
             initButtons();
         });
     }
+
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
 </script>
