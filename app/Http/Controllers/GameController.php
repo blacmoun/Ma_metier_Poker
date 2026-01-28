@@ -67,9 +67,11 @@ class GameController extends Controller
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
-        $players = $game->players->values();
+        // Correction: On s'assure de récupérer les joueurs dans le même ordre que le current_turn
+        $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
+        // Vérification stricte du tour
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -84,7 +86,6 @@ class GameController extends Controller
     }
 
     private function handleFold($game, $players) {
-        $folder = $players[$game->current_turn];
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
 
         $p1 = $players[0];
@@ -103,7 +104,7 @@ class GameController extends Controller
     }
 
     public function processTurnAction($game, $pokerService) {
-        $players = $game->players->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         if ($players->count() < 2) return;
 
         $p1 = $players[0];
@@ -144,7 +145,7 @@ class GameController extends Controller
 
     private function advanceGameState($game, $pokerService) {
         $now = Carbon::now();
-        $players = $game->players->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         if ($players->count() < 2) return;
 
         $p1 = $players[0]; $p2 = $players[1];
@@ -190,10 +191,8 @@ class GameController extends Controller
             case 'flop':
             case 'turn':
                 $this->collectBets($game);
-
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
-
                 $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
 
                 $game->update([
@@ -207,7 +206,6 @@ class GameController extends Controller
 
             case 'river':
                 $this->collectBets($game);
-
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
 
@@ -245,7 +243,7 @@ class GameController extends Controller
     }
 
     public function gameResponse($game, $pokerService = null) {
-        $p = $game->players->values();
+        $p = $game->players()->orderBy('id', 'asc')->get();
         $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet || ($p[0]->chips == 0 && $p[0]->current_bet <= $p[1]->current_bet) || ($p[1]->chips == 0 && $p[1]->current_bet <= $p[0]->current_bet)) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
