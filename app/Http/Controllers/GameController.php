@@ -34,8 +34,6 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
 
-        // FIX POT: Si un joueur a misé plus que l'autre (cas d'un tapis plus petit)
-        // on rend la différence au joueur qui a misé le plus.
         if ($p1->current_bet !== $p2->current_bet) {
             $minBet = min($p1->current_bet, $p2->current_bet);
             if ($p1->current_bet > $p2->current_bet) {
@@ -49,7 +47,6 @@ class GameController extends Controller
             }
         }
 
-        // Maintenant les mises sont égales, on les met dans le pot
         $totalBets = $game->players->sum('current_bet');
         if ($totalBets > 0) {
             $game->increment('pot', $totalBets);
@@ -92,7 +89,10 @@ class GameController extends Controller
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
+        // Sécurité : si on est en All-in (isLocked), on ne traite plus d'actions manuelles
+        $isLocked = ($players->count() === 2 && ($players[0]->chips == 0 || $players[1]->chips == 0) && ($players[0]->current_bet === $players[1]->current_bet));
+
+        if (!$me || $game->status === 'showdown' || $isLocked || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
 
@@ -112,14 +112,11 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
 
-        // Sur un Fold, on doit aussi gérer le surplus avant de donner le pot
         $minBet = min($p1->current_bet, $p2->current_bet);
 
-        // On rend le surplus à celui qui a misé trop
         if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $minBet);
         if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $minBet);
 
-        // Le gagnant prend le pot actuel + les deux mises égales
         $deadMoney = $game->pot + ($minBet * 2);
         $winner->increment('chips', $deadMoney);
 
@@ -141,10 +138,10 @@ class GameController extends Controller
             return;
         }
 
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && ($p1->current_bet === $p2->current_bet || ($p1->chips === 0 && $p1->current_bet <= $p2->current_bet) || ($p2->chips === 0 && $p2->current_bet <= $p1->current_bet));
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
         $isPhaseOver = false;
 
-        if ($someoneZeroAndCalled) {
+        if ($someoneZeroAndCalled || in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
@@ -156,7 +153,7 @@ class GameController extends Controller
             }
         }
 
-        if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
+        if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
@@ -175,7 +172,6 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
 
-        // Note: collectBets() s'occupe désormais du surplus de chips
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
         $auto = ($someoneZero && $betsEqual);
@@ -230,6 +226,7 @@ class GameController extends Controller
                     $p1->increment('chips', $half);
                     $p2->increment('chips', $game->pot - $half);
                 }
+                // FIX : On passe immédiatement en showdown
                 $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => $now->addSeconds($this->showdownDuration)]);
                 break;
 
@@ -256,7 +253,7 @@ class GameController extends Controller
 
     public function gameResponse($game, $pokerService = null) {
         $p = $game->players()->orderBy('id', 'asc')->get();
-        $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet || ($p[0]->chips == 0 && $p[0]->current_bet <= $p[1]->current_bet) || ($p[1]->chips == 0 && $p[1]->current_bet <= $p[0]->current_bet)) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
+        $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
             'players' => $p->map(function($player) use ($game, $pokerService, $p) {
@@ -290,15 +287,11 @@ class GameController extends Controller
 
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
-
         Player::where('session_token', session('player_token'))->delete();
-
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
-
         $token = Str::random(32);
         $game->players()->create(['name' => $request->name, 'chips' => 1000, 'session_token' => $token]);
         session(['player_token' => $token]);
-
         return response()->json(['message' => 'Success']);
     }
 
