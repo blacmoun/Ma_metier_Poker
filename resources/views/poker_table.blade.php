@@ -80,9 +80,9 @@
     setInterval(() => { if(timer > 0) timer--; }, 1000);
 
     function updateBetDisplay() {
-        let val = document.getElementById('bet-range').value;
-        let max = document.getElementById('bet-range').max;
-        document.getElementById('bet-value').innerText = (val === max && max > 0) ? "TAPIS (" + val + ")" : val;
+        let val = parseInt(document.getElementById('bet-range').value);
+        let max = parseInt(document.getElementById('bet-range').max);
+        document.getElementById('bet-value').innerText = (val >= max && max > 0) ? "TAPIS (" + val + ")" : val;
     }
 
     function toggleMenu() {
@@ -214,21 +214,23 @@
         updateUI();
 
         let betRange = document.getElementById('bet-range');
-        if (betRange && foundMe) {
-            let diff = otherMaxBet - myBet;
-            let minRaise = diff + 40;
-            betRange.min = Math.min(myChips, minRaise);
-            betRange.max = myChips;
-            if (parseInt(betRange.value) < parseInt(betRange.min)) {
-                betRange.value = betRange.min;
-                updateBetDisplay();
-            }
-        }
-
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
-        let callBtn = document.getElementById('act-call');
 
+        if (betRange && foundMe && isMyTurn) {
+            let diffToCall = Math.max(0, otherMaxBet - myBet);
+            let minRaiseAmount = diffToCall + 40;
+
+            betRange.min = Math.min(myChips, minRaiseAmount);
+            betRange.max = myChips;
+
+            if (parseInt(betRange.value) < parseInt(betRange.min)) {
+                betRange.value = betRange.min;
+            }
+            updateBetDisplay();
+        }
+
+        let callBtn = document.getElementById('act-call');
         if(callBtn) {
             let me = playerData.find(p => p.isMe);
             if (otherMaxBet > myBet) {
@@ -239,6 +241,7 @@
                 callBtn.innerText = "PAROLE";
             }
         }
+
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
             if(el) el.disabled = !(isMyTurn && playPhase && !isAllInState);
