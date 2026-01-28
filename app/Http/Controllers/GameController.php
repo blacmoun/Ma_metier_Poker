@@ -134,24 +134,30 @@ class GameController extends Controller
             return;
         }
 
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && ($p1->current_bet === $p2->current_bet || ($p1->chips === 0 && $p1->current_bet <= $p2->current_bet) || ($p2->chips === 0 && $p2->current_bet <= $p1->current_bet));
+        // Un tapis est "appelé" si les mises sont égales OU si celui qui n'a plus de jetons a misé tout ce qu'il pouvait
+        $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
+        $someoneZeroAndCalled = $someoneZero && $betsEqual;
+
         $isPhaseOver = false;
 
-        if ($someoneZeroAndCalled) {
+        if ($someoneZeroAndCalled || in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
+            // Au pre-flop, le dernier à parler est la BB (celui qui n'est PAS dealer)
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
+                // Aux autres tours, le dernier à parler est le Dealer
                 $lastToAct = ($game->dealer_index == 0) ? 0 : 1;
                 if ($game->current_turn == $lastToAct) $isPhaseOver = true;
             }
         }
 
-        if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
+        if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
+            // On change de tour
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
@@ -168,6 +174,7 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
 
+        // Gestion du surplus All-in avant de passer à la suite
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
                 $minBet = min($p1->current_bet, $p2->current_bet);
@@ -199,7 +206,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index,
+                    'current_turn' => $game->dealer_index, // Le dealer parle en premier au pre-flop
                     'pot' => 0
                 ]);
                 break;
@@ -210,6 +217,7 @@ class GameController extends Controller
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
+                // Après le flop, c'est le non-dealer qui parle en premier
                 $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
 
                 $game->update([
