@@ -134,6 +134,13 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
+        // Si le timer expire, celui dont c'est le tour fold
+        $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
+        if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
+            $this->handleFold($game, $players);
+            return;
+        }
+
         $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
         $allInResolved = $someoneZero && (
                 ($p1->chips === 0 && $p2->current_bet >= $p1->current_bet) ||
@@ -158,13 +165,20 @@ class GameController extends Controller
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Passer au joueur suivant
+            // Logique de changement de tour
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
 
-            // Sécurité Pre-flop : Au tout début (20 vs 40), c'est bien au dealer de parler.
-            // On ne change le tour que si c'est une action utilisateur (POST)
-            if ($game->status === 'pre-flop' && !$betsEqual && !request()->isMethod('post')) {
-                $nextTurn = $game->dealer_index;
+            // FIX : On ne force le tour du Dealer que lors du premier affichage (GET)
+            // Si c'est un POST (le joueur a cliqué), on laisse le tour changer.
+            if ($game->status === 'pre-flop' && !request()->isMethod('post')) {
+                $sbAmount = 20;
+                $bbAmount = 40;
+                $currentBets = [$p1->current_bet, $p2->current_bet];
+
+                // Si on est encore sur les blindes de départ, c'est au Dealer (SB) de parler
+                if (in_array($sbAmount, $currentBets) && in_array($bbAmount, $currentBets)) {
+                    $nextTurn = $game->dealer_index;
+                }
             }
 
             $game->update([
