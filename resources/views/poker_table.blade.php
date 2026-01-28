@@ -21,6 +21,9 @@
         button:disabled { opacity: 0.3 !important; cursor: not-allowed !important; }
         .bet-slider { width: 100%; cursor: pointer; accent-color: #FFD700; }
         .bet-value-display { color: #FFD700; font-weight: bold; font-size: 1.2rem; min-width: 60px; text-align: center; }
+        /* Ajustement Chat pour tenir dans la zone */
+        #chat { max-height: 140px; display: flex; flex-direction: column; }
+        .chat-thread { flex-grow: 1; overflow-y: auto; background: #111; padding: 5px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -39,52 +42,23 @@
     <div class="container-fluid">
         <div class="row">
             <div class="col-md-5">
-                <ul class="nav nav-tabs mb-2">
+                <ul class="nav nav-tabs mb-2" id="uiTabs">
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Table</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
                     <div class="tab-pane fade show active" id="cards">En attente des cartes...</div>
                     <div class="tab-pane fade" id="board">Aucune carte sur la table.</div>
                     <div class="tab-pane fade" id="stats">Statistiques de session...</div>
-                    <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
-                    <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
-                    <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
-                    <div class="container   tab-pane fade" id="chat">
-                        <div class="chat-header">
-                            <div>💬 Chat 1–1</div>
-                            <div class="who">
-                                <label>
-                                    <input type="radio" name="who" value="me" checked> Moi
-                                </label>
-                                <label>
-                                    <input type="radio" name="who" value="other"> Lui/Elle
-                                </label>
-                            </div>
-                        </div>
-
+                    <div class="tab-pane fade" id="chat">
                         <div class="chat-thread" id="chatThread">
-                            <!-- Exemples initiaux -->
-                            <div class="msg other">
-                                <div class="bubble">
-                                    Salut ! On commence la partie ?
-                                    <div class="meta">Lui • 12:03</div>
-                                </div>
-                            </div>
-                            <div class="msg me">
-                                <div class="bubble">
-                                    Yes, deal !
-                                    <div class="meta">Moi • 12:04</div>
-                                </div>
-                            </div>
+                            <div class="msg other"><div class="bubble">Bienvenue à la table !<div class="meta">Système • --:--</div></div></div>
                         </div>
-
-                        <div class="chat-compose">
-                            <input id="chatInput" type="text" placeholder="Écris ton message..." />
-                            <button id="chatSend" onclick="playFX('notif')">Envoyer</button>
+                        <div class="chat-compose d-flex mt-1">
+                            <input id="chatInput" type="text" class="form-control form-control-sm" placeholder="Message..." />
+                            <button id="chatSend" class="btn btn-warning btn-sm ms-1" onclick="playFX('notif')">OK</button>
                         </div>
                     </div>
                 </div>
@@ -141,6 +115,7 @@
     function setup(){
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
+        // Initialisation musique au premier clic
         document.addEventListener("pointerdown", startElevatorMusic, { once: true });
         resetGameState();
         createLogoutButton();
@@ -171,7 +146,7 @@
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x-50, y+avatarH/2+10);
             btn.mousePressed(() => {
-                buttonPressed();
+                if(typeof buttonPressed === 'function') buttonPressed();
                 joinPlayer(i);
             });
             buttons.push(btn);
@@ -182,6 +157,12 @@
         try {
             const res = await fetch("/game");
             const data = await res.json();
+
+            // Detection changement de tour pour son notif
+            if(data.currentTurn !== currentTurn && data.players[data.currentTurn]?.is_me) {
+                if(typeof playFX === 'function') playFX('notif');
+            }
+
             if (currentStatus !== 'showdown') {
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
@@ -204,13 +185,14 @@
             document.getElementById('myName').innerText = me.name;
             document.getElementById('myChips').innerText = me.chips + " J";
             document.getElementById('cards').innerHTML = (myHand && myHand.length > 0) ?
-            myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
+                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
                 communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
         }
     }
 
     async function handlePlay(action) {
+        if(typeof buttonPressed === 'function') buttonPressed();
         let amount = 0;
         let betRange = document.getElementById('bet-range');
         if(action === 'raise') amount = betRange.value;
@@ -234,17 +216,12 @@
     }
 
     function updateGameStateLocally(data) {
-        // Si on reçoit un état identique avec un timer plus élevé, c'est un doublon du setInterval
-        // on l'ignore pour éviter de relancer l'animation du timer
-        if (currentStatus === data.status && data.status === "countdown" && data.timer > timer) {
-            return;
-        }
+        if (currentStatus === data.status && data.status === "countdown" && data.timer > timer) return;
 
         currentStatus = data.status;
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
 
-        // Synchronisation intelligente du timer
         if (Math.abs(timer - data.timer) > 2 || currentStatus !== data.status) {
             timer = data.timer;
         }
@@ -281,9 +258,7 @@
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
         if (betRange && foundMe) {
-            let diffToCall = Math.max(0, otherMaxBet - myBet);
-            let minRaise = otherMaxBet > 0 ? otherMaxBet + Math.max(20, otherMaxBet) : 20;
-
+            let minRaise = otherMaxBet > 0 ? otherMaxBet + 20 : 20;
             betRange.min = Math.min(myChips, Math.max(20, minRaise));
             betRange.max = myChips;
             if (parseInt(betRange.value) < betRange.min) betRange.value = betRange.min;
@@ -419,10 +394,9 @@
     function createLogoutButton(){
         logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
         logoutBtn.mousePressed(async ()=>{
+            if(typeof buttonPressed === 'function') buttonPressed();
             await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
-            amISeated = false;
-            resetGameState();
-            initButtons();
+            amISeated = false; resetGameState(); initButtons();
         });
     }
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
