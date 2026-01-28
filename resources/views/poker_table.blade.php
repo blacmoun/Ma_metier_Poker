@@ -140,9 +140,14 @@
             if (currentStatus !== 'showdown') {
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
-            if (amISeated) {
-                let stillInGame = data.players.some(p => p.is_me);
-                if (!stillInGame) { location.reload(); return; }
+
+            let stillInGame = data.players.some(p => p.is_me);
+            // On ne reload que si on vient de perdre ou de quitter, sinon on update localement
+            if (amISeated && !stillInGame) {
+                amISeated = false;
+                resetGameState();
+                initButtons();
+                return;
             }
             updateGameStateLocally(data);
         } catch(e) { console.error("Sync Error:", e); }
@@ -163,7 +168,10 @@
 
     async function handlePlay(action) {
         let amount = 0;
-        if(action === 'raise') amount = document.getElementById('bet-range').value;
+        let betRange = document.getElementById('bet-range');
+        if(action === 'raise') amount = betRange.value;
+        if(action === 'allin') amount = betRange.max;
+
         if(['raise', 'allin'].includes(action)) spawnChips(currentTurn);
 
         const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
@@ -217,15 +225,14 @@
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
-        if (betRange && foundMe && isMyTurn) {
+        if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            let minRaiseAmount = diffToCall + 40;
-
-            betRange.min = Math.min(myChips, minRaiseAmount);
+            // On fixe le min à 0 ou diffToCall pour permettre au dealer/joueur de miser sans bloquer
+            betRange.min = 0;
             betRange.max = myChips;
 
-            if (parseInt(betRange.value) < parseInt(betRange.min)) {
-                betRange.value = betRange.min;
+            if (isMyTurn && parseInt(betRange.value) > myChips) {
+                betRange.value = myChips;
             }
             updateBetDisplay();
         }
@@ -356,11 +363,17 @@
     async function joinPlayer(index){
         let name = prompt("Votre nom :"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
-        location.reload();
+        // On load les joueurs au lieu de reload la page entière
+        loadPlayers().then(() => initButtons());
     }
     function createLogoutButton(){
         logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
-        logoutBtn.mousePressed(async ()=>{ await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}}); location.reload(); });
+        logoutBtn.mousePressed(async ()=>{
+            await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
+            amISeated = false;
+            resetGameState();
+            initButtons();
+        });
     }
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }

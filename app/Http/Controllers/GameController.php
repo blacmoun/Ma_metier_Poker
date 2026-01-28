@@ -67,9 +67,11 @@ class GameController extends Controller
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
+        // Crucial: toujours ordonner pour que l'index corresponde au tour
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
+        // On vérifie si c'est bien mon tour dans la liste ordonnée
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -79,7 +81,8 @@ class GameController extends Controller
             return $this->gameResponse($game->fresh(), $pokerService);
         }
 
-        $this->processTurnAction($game->fresh(), $pokerService);
+        // Si l'action est un bet/call/raise, on traite le changement de tour
+        $this->processTurnAction($game, $pokerService);
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
