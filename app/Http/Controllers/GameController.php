@@ -74,17 +74,21 @@ class GameController extends Controller
             return $this->gameResponse($game, $pokerService);
         }
 
+        $opp = $players[($game->current_turn == 0) ? 1 : 0];
+
         if ($request->action === 'fold') {
             $this->handleFold($game, $players);
             return $this->gameResponse($game->fresh(), $pokerService);
         }
 
         if ($request->action === 'call') {
-            $opp = $players[($game->current_turn == 0) ? 1 : 0];
             $amt = min($me->chips, max(0, $opp->current_bet - $me->current_bet));
             $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
         } elseif ($request->action === 'raise') {
-            $amt = min($me->chips, (int)$request->amount);
+            $minRaise = max(40, $opp->current_bet * 2);
+            $amt = (int)$request->amount;
+            if ($amt < $minRaise) $amt = min($me->chips, $minRaise);
+            $amt = min($me->chips, $amt);
             $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
         } elseif ($request->action === 'allin') {
             $me->update(['current_bet' => $me->current_bet + $me->chips, 'chips' => 0]);
@@ -115,7 +119,7 @@ class GameController extends Controller
             return;
         }
 
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && ($p1->current_bet === $p2->current_bet || $p1->chips === 0 && $p1->current_bet <= $p2->current_bet || $p2->chips === 0 && $p2->current_bet <= $p1->current_bet);
         $isPhaseOver = false;
 
         if ($someoneZeroAndCalled) {
@@ -148,7 +152,7 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
-        $betsEqual = ($p1->current_bet == $p2->current_bet);
+        $betsEqual = ($p1->current_bet == $p2->current_bet || ($p1->chips == 0 && $p1->current_bet <= $p2->current_bet) || ($p2->chips == 0 && $p2->current_bet <= $p1->current_bet));
 
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
@@ -219,10 +223,12 @@ class GameController extends Controller
 
     public function gameResponse($game, $pokerService = null) {
         $p = $game->players->values();
-        $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
+        $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet || ($p[0]->chips == 0 && $p[0]->current_bet <= $p[1]->current_bet) || ($p[1]->chips == 0 && $p[1]->current_bet <= $p[0]->current_bet)) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
-            'players' => $p->map(function($player) use ($game, $pokerService) {
+            'players' => $p->map(function($player) use ($game, $pokerService, $p) {
+                $opp = $p->firstWhere('session_token', '!=', $player->session_token);
+                $neededToCall = $opp ? max(0, $opp->current_bet - $player->current_bet) : 0;
                 return [
                     'name' => $player->name,
                     'chips' => $player->chips,
@@ -230,6 +236,7 @@ class GameController extends Controller
                     'is_me' => ($player->session_token === session('player_token')),
                     'hand' => ($player->session_token === session('player_token') || $game->status === 'showdown') ? $player->hand : null,
                     'has_cards' => !empty($player->hand),
+                    'call_amount' => min($player->chips, $neededToCall),
                     'hand_name' => ($game->status === 'showdown' && $pokerService && !empty($player->hand)) ? $this->getHandRankName($pokerService->evaluateHand($player->hand, $game->community_cards)) : null
                 ];
             }),
