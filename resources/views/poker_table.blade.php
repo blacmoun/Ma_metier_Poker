@@ -197,7 +197,7 @@
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
-        let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0;
+        let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
@@ -211,6 +211,7 @@
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
                     myChips = p.chips;
+                    if(i === currentTurn) isItMyTurn = true;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
                 }
@@ -221,11 +222,15 @@
         updateUI();
 
         let betRange = document.getElementById('bet-range');
-        let meCanPlay = (data.players[data.currentTurn] && data.players[data.currentTurn].is_me);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
         if (betRange && foundMe) {
-            let minRaise = otherMaxBet > 0 ? (otherMaxBet * 2) - myBet : 20;
+            // REGLE RAISE : Si qqun mise 100, on doit pouvoir relancer à min 200 (100 de call + 100 de raise)
+            let diffToCall = Math.max(0, otherMaxBet - myBet);
+            let minRaise = otherMaxBet > 0 ? otherMaxBet + (otherMaxBet - myBet) : 20;
+            // Correction simplifiée pour coller à ta demande :
+            if(otherMaxBet > 0) minRaise = otherMaxBet + Math.max(20, otherMaxBet);
+
             betRange.min = Math.min(myChips, Math.max(20, minRaise));
             betRange.max = myChips;
             if (parseInt(betRange.value) < betRange.min) betRange.value = betRange.min;
@@ -246,7 +251,7 @@
 
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
-            if(el) el.disabled = !(meCanPlay && playPhase);
+            if(el) el.disabled = !(isItMyTurn && playPhase);
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
