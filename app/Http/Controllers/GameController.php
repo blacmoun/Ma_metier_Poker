@@ -75,10 +75,7 @@ class GameController extends Controller
         }
 
         if ($request->action === 'fold') {
-            $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
-            $winner->increment('chips', $game->pot + $players->sum('current_bet'));
-            foreach ($players as $p) $p->update(['current_bet' => 0, 'hand' => null]);
-            $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => Carbon::now()->addSeconds($this->showdownDuration)]);
+            $this->handleFold($game, $players);
             return $this->gameResponse($game->fresh(), $pokerService);
         }
 
@@ -97,6 +94,14 @@ class GameController extends Controller
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
+    // Fonction centralisée pour le Fold
+    private function handleFold($game, $players) {
+        $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
+        $winner->increment('chips', $game->pot + $players->sum('current_bet'));
+        foreach ($players as $p) $p->update(['current_bet' => 0, 'hand' => null]);
+        $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => Carbon::now()->addSeconds($this->showdownDuration)]);
+    }
+
     public function processTurnAction($game, $pokerService) {
         $players = $game->players->values();
         if ($players->count() < 2) return;
@@ -105,9 +110,16 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // MODIFICATION 1 : On détecte si un joueur est à 0 ET que les mises sont égales (Call effectué)
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
+        // LOGIQUE DU TIMER EXPIRE
+        $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
 
+        if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
+            // Si le temps est fini et que les mises ne sont pas égales : FOLD automatique du joueur actuel
+            $this->handleFold($game, $players);
+            return;
+        }
+
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
         $isPhaseOver = false;
 
         if ($someoneZeroAndCalled) {
@@ -115,8 +127,10 @@ class GameController extends Controller
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                if ($game->current_turn == $bbIndex) $isPhaseOver = true;
+                // On vérifie l'ID pour être sûr de qui doit parler (règle de la Big Blind)
+                if ($players[$game->current_turn]->id === $players[$bbIndex]->id) $isPhaseOver = true;
             } else {
+                // Après le flop, si J2 parle et que c'est égal, on change de phase
                 if ($game->current_turn == 1) $isPhaseOver = true;
             }
         }
@@ -139,12 +153,10 @@ class GameController extends Controller
 
         $p1 = $players[0];
         $p2 = $players[1];
-
         $deck = $game->deck ?? [];
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
 
-        // MODIFICATION 2 : L'auto-déroulement s'active si quelqu'un est à tapis ET que les mises sont égalisées
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
 
@@ -173,28 +185,22 @@ class GameController extends Controller
                 break;
 
             case 'flop':
-                $this->collectBets($game);
-                $game->update(['status' => 'turn', 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => 0]);
-                break;
-
             case 'turn':
                 $this->collectBets($game);
-                $game->update(['status' => 'river', 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => 0]);
+                $nextStatus = ($game->status === 'flop') ? 'turn' : 'river';
+                $game->update(['status' => $nextStatus, 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => 0]);
                 break;
 
             case 'river':
                 $this->collectBets($game);
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
-
                 if ($p1S > $p2S) $p1->increment('chips', $game->pot);
                 elseif ($p2S > $p1S) $p2->increment('chips', $game->pot);
                 else {
                     $half = floor($game->pot / 2);
-                    $p1->increment('chips', $half);
-                    $p2->increment('chips', $half);
+                    $p1->increment('chips', $half); $p2->increment('chips', $half);
                 }
-
                 $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => $now->addSeconds($this->showdownDuration)]);
                 break;
 
@@ -220,8 +226,6 @@ class GameController extends Controller
 
     public function gameResponse($game, $pokerService = null) {
         $p = $game->players->values();
-
-        // MODIFICATION 3 : Mise à jour de la détection de verrouillage pour l'affichage (Front-end)
         $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
