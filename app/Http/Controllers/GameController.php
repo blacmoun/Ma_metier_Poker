@@ -28,6 +28,28 @@ class GameController extends Controller
     }
 
     private function collectBets($game) {
+        $players = $game->players;
+        if ($players->count() < 2) return;
+
+        $p1 = $players[0];
+        $p2 = $players[1];
+
+        // FIX POT: Si un joueur a misé plus que l'autre (cas d'un tapis plus petit)
+        // on rend la différence au joueur qui a misé le plus.
+        if ($p1->current_bet !== $p2->current_bet) {
+            $minBet = min($p1->current_bet, $p2->current_bet);
+            if ($p1->current_bet > $p2->current_bet) {
+                $extra = $p1->current_bet - $minBet;
+                $p1->increment('chips', $extra);
+                $p1->update(['current_bet' => $minBet]);
+            } else {
+                $extra = $p2->current_bet - $minBet;
+                $p2->increment('chips', $extra);
+                $p2->update(['current_bet' => $minBet]);
+            }
+        }
+
+        // Maintenant les mises sont égales, on les met dans le pot
         $totalBets = $game->players->sum('current_bet');
         if ($totalBets > 0) {
             $game->increment('pot', $totalBets);
@@ -90,12 +112,16 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
 
-        $callAmount = min($p1->current_bet, $p2->current_bet);
-        $deadMoney = $game->pot + ($callAmount * 2);
-        $winner->increment('chips', $deadMoney);
+        // Sur un Fold, on doit aussi gérer le surplus avant de donner le pot
+        $minBet = min($p1->current_bet, $p2->current_bet);
 
-        if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
-        if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $p1->current_bet);
+        // On rend le surplus à celui qui a misé trop
+        if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $minBet);
+        if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $minBet);
+
+        // Le gagnant prend le pot actuel + les deux mises égales
+        $deadMoney = $game->pot + ($minBet * 2);
+        $winner->increment('chips', $deadMoney);
 
         foreach ($players as $p) $p->update(['current_bet' => 0, 'hand' => null]);
         $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => Carbon::now()->addSeconds($this->showdownDuration)]);
@@ -149,19 +175,7 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
 
-        if ($p1->chips == 0 || $p2->chips == 0) {
-            if ($p1->current_bet != $p2->current_bet) {
-                $minBet = min($p1->current_bet, $p2->current_bet);
-                if ($p1->current_bet > $p2->current_bet) {
-                    $p1->increment('chips', $p1->current_bet - $minBet);
-                    $p1->update(['current_bet' => $minBet]);
-                } else {
-                    $p2->increment('chips', $p2->current_bet - $minBet);
-                    $p2->update(['current_bet' => $minBet]);
-                }
-            }
-        }
-
+        // Note: collectBets() s'occupe désormais du surplus de chips
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
         $auto = ($someoneZero && $betsEqual);
@@ -277,7 +291,6 @@ class GameController extends Controller
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
 
-        // FIX: Nettoyage des anciennes sessions orphelines du même joueur avant de rejoindre
         Player::where('session_token', session('player_token'))->delete();
 
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
