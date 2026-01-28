@@ -216,13 +216,15 @@
         let callBtn = document.getElementById('act-call');
 
         if(callBtn) {
+            let me = playerData.find(p => p.isMe);
             if (otherMaxBet > myBet) {
-                callBtn.innerText = "SUIVRE " + (otherMaxBet - myBet);
+                let diff = otherMaxBet - myBet;
+                let displayAmount = me ? Math.min(me.chips, diff) : diff;
+                callBtn.innerText = "SUIVRE " + displayAmount;
             } else {
                 callBtn.innerText = "PAROLE";
             }
         }
-
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
             if(el) el.disabled = !(isMyTurn && playPhase && !isAllInState);
