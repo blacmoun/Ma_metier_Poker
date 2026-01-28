@@ -5,7 +5,9 @@
     <title>Poker Pro - J Edition</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="/js/sound.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet" />
     <style>
         body { margin:0; padding:0; overflow:hidden; background:#073870; font-family: 'Segoe UI', sans-serif; }
         #p5-zone { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; transition: height 0.4s ease; z-index: 0; }
@@ -41,11 +43,50 @@
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Table</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
                     <div class="tab-pane fade show active" id="cards">En attente des cartes...</div>
                     <div class="tab-pane fade" id="board">Aucune carte sur la table.</div>
                     <div class="tab-pane fade" id="stats">Statistiques de session...</div>
+                    <div class="tab-pane fade show active" id="cards">En attente de vos cartes...</div>
+                    <div class="tab-pane fade" id="board">Aucune carte sur le tapis.</div>
+                    <div class="tab-pane fade" id="stats">Statistiques de la session...</div>
+                    <div class="container   tab-pane fade" id="chat">
+                        <div class="chat-header">
+                            <div>💬 Chat 1–1</div>
+                            <div class="who">
+                                <label>
+                                    <input type="radio" name="who" value="me" checked> Moi
+                                </label>
+                                <label>
+                                    <input type="radio" name="who" value="other"> Lui/Elle
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="chat-thread" id="chatThread">
+                            <!-- Exemples initiaux -->
+                            <div class="msg other">
+                                <div class="bubble">
+                                    Salut ! On commence la partie ?
+                                    <div class="meta">Lui • 12:03</div>
+                                </div>
+                            </div>
+                            <div class="msg me">
+                                <div class="bubble">
+                                    Yes, deal !
+                                    <div class="meta">Moi • 12:04</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chat-compose">
+                            <input id="chatInput" type="text" placeholder="Écris ton message..." />
+                            <button id="chatSend" onclick="playFX('notif')">Envoyer</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -100,6 +141,7 @@
     function setup(){
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
+        document.addEventListener("pointerdown", startElevatorMusic, { once: true });
         resetGameState();
         createLogoutButton();
         loadPlayers().then(() => {
@@ -128,7 +170,10 @@
             let btn = createButton("Rejoindre");
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x-50, y+avatarH/2+10);
-            btn.mousePressed(() => joinPlayer(i));
+            btn.mousePressed(() => {
+                buttonPressed();
+                joinPlayer(i);
+            });
             buttons.push(btn);
         }
     }
@@ -159,7 +204,7 @@
             document.getElementById('myName').innerText = me.name;
             document.getElementById('myChips').innerText = me.chips + " J";
             document.getElementById('cards').innerHTML = (myHand && myHand.length > 0) ?
-                myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
+            myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
                 communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
         }
