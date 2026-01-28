@@ -28,6 +28,25 @@ class GameController extends Controller
     }
 
     private function collectBets($game) {
+        $players = $game->players;
+        if ($players->count() < 2) return;
+
+        $p1 = $players[0];
+        $p2 = $players[1];
+
+        if ($p1->current_bet !== $p2->current_bet) {
+            $minBet = min($p1->current_bet, $p2->current_bet);
+
+            if ($p1->current_bet > $p2->current_bet) {
+                $extra = $p1->current_bet - $minBet;
+                $p1->increment('chips', $extra);
+                $p1->update(['current_bet' => $minBet]);
+            } else {
+                $extra = $p2->current_bet - $minBet;
+                $p2->increment('chips', $extra);
+                $p2->update(['current_bet' => $minBet]);
+            }
+        }
         $totalBets = $game->players->sum('current_bet');
         if ($totalBets > 0) {
             $game->increment('pot', $totalBets);
