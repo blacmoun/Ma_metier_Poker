@@ -5,6 +5,7 @@
     <title>Poker Pro - J Edition</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="/js/sound.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="css/style.css" rel="stylesheet" />
     <style>
@@ -41,7 +42,6 @@
                 <ul class="nav nav-tabs mb-2">
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Tapis</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
@@ -79,7 +79,7 @@
 
                         <div class="chat-compose">
                             <input id="chatInput" type="text" placeholder="Écris ton message..." />
-                            <button id="chatSend">Envoyer</button>
+                            <button id="chatSend" onclick="playFX('notif')">Envoyer</button>
                         </div>
                     </div>
                 </div>
@@ -96,8 +96,8 @@
                 <div class="d-flex gap-2">
                     <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">SUIVRE</button>
                     <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RELANCER</button>
-                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="handlePlay('allin')">ALL-IN</button>
-                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">COUCHER</button>
+                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="playFX('coin'); handlePlay('allin')">ALL-IN</button>
+                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="playFX('bad'); handlePlay('fold')">COUCHER</button>
                 </div>
             </div>
         </div>
@@ -134,6 +134,9 @@
     function setup(){
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
+
+        document.addEventListener("pointerdown", startElevatorMusic, { once: true });
+
         resetGameState();
         createLogoutButton();
         loadPlayers().then(() => {
@@ -162,7 +165,12 @@
             let btn = createButton("Rejoindre");
             btn.addClass('p5-btn'); btn.size(100,30);
             btn.position(x-50, y+avatarH/2+10);
-            btn.mousePressed(() => joinPlayer(i));
+
+            btn.mousePressed(() => {
+                buttonPressed();
+                joinPlayer(i);
+            });
+
             buttons.push(btn);
         }
     }
@@ -386,6 +394,7 @@
     }
 
     async function joinPlayer(index){
+        stopMusic();
         let name = prompt("Nom :"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
         location.reload();
