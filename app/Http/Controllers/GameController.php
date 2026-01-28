@@ -173,7 +173,6 @@ class GameController extends Controller
 
         $p1 = $players[0]; $p2 = $players[1];
 
-        // FIX REDISTRIBUTION ALL-IN : Rembourser le surplus avant d'avancer
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
                 if ($p1->current_bet > $p2->current_bet) {
@@ -247,15 +246,15 @@ class GameController extends Controller
                     $this->resetToWaiting($game);
                 } else {
                     $newDealer = ($game->dealer_index == 0 ? 1 : 0);
+                    Player::where('game_id', $game->id)->update(['hand' => null, 'current_bet' => 0]);
                     $game->update([
                         'status' => 'countdown',
-                        'timer_at' => $now->addSeconds(5),
                         'community_cards' => [],
                         'dealer_index' => $newDealer,
                         'pot' => 0,
-                        'current_turn' => $newDealer
+                        'current_turn' => $newDealer,
+                        'timer_at' => $now->addSeconds(5)
                     ]);
-                    Player::where('game_id', $game->id)->update(['hand' => null, 'current_bet' => 0]);
                 }
                 break;
         }
