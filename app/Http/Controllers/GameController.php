@@ -74,24 +74,9 @@ class GameController extends Controller
             return $this->gameResponse($game, $pokerService);
         }
 
-        $opp = $players[($game->current_turn == 0) ? 1 : 0];
-
         if ($request->action === 'fold') {
             $this->handleFold($game, $players);
             return $this->gameResponse($game->fresh(), $pokerService);
-        }
-
-        if ($request->action === 'call') {
-            $amt = min($me->chips, max(0, $opp->current_bet - $me->current_bet));
-            $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
-        } elseif ($request->action === 'raise') {
-            $minRaise = max(40, $opp->current_bet * 2);
-            $amt = (int)$request->amount;
-            if ($amt < $minRaise) $amt = min($me->chips, $minRaise);
-            $amt = min($me->chips, $amt);
-            $me->update(['current_bet' => $me->current_bet + $amt, 'chips' => $me->chips - $amt]);
-        } elseif ($request->action === 'allin') {
-            $me->update(['current_bet' => $me->current_bet + $me->chips, 'chips' => 0]);
         }
 
         $this->processTurnAction($game->fresh(), $pokerService);

@@ -41,11 +41,11 @@ class PlayerController extends Controller
                 break;
 
             case 'raise':
-                $totalSaisi = (int) $request->input('amount', 0);
-                $minRequired = ($opponent->current_bet ?? 0);
-                if ($totalSaisi <= $minRequired) $totalSaisi = $minRequired + 20;
+                $requestedAmount = (int) $request->input('amount', 0);
+                $diff = ($opponent->current_bet ?? 0) - $player->current_bet;
+                $minRequired = $diff + 40;
 
-                $toAdd = $totalSaisi - $player->current_bet;
+                $toAdd = max($minRequired, $requestedAmount);
                 $actualAdd = min($player->chips, $toAdd);
 
                 $player->decrement('chips', $actualAdd);
@@ -53,6 +53,7 @@ class PlayerController extends Controller
                 break;
         }
 
+        // On appelle play() SANS lui redemander de calculer les mises
         return app(GameController::class)->play($request, $pokerService);
     }
 }
