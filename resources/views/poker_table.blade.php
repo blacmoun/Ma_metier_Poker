@@ -189,10 +189,21 @@
     }
 
     function updateGameStateLocally(data) {
+        // Si on reçoit un état identique avec un timer plus élevé, c'est un doublon du setInterval
+        // on l'ignore pour éviter de relancer l'animation du timer
+        if (currentStatus === data.status && data.status === "countdown" && data.timer > timer) {
+            return;
+        }
+
         currentStatus = data.status;
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
-        timer = data.timer;
+
+        // Synchronisation intelligente du timer
+        if (Math.abs(timer - data.timer) > 2 || currentStatus !== data.status) {
+            timer = data.timer;
+        }
+
         currentTurn = data.currentTurn;
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
@@ -211,7 +222,6 @@
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
                     myChips = p.chips;
-                    // FIX: Verification directe sur l'index de la boucle
                     if(i === data.currentTurn) isItMyTurn = true;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
