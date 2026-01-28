@@ -48,6 +48,7 @@
                     <div class="tab-pane fade" id="stats">Statistiques de session...</div>
                 </div>
             </div>
+
             <div class="col-md-7">
                 <div class="d-flex align-items-center gap-3 mb-3 bg-secondary bg-opacity-25 p-2 rounded">
                     <span class="small fw-bold text-uppercase">Mise :</span>
@@ -55,6 +56,7 @@
                     <span id="bet-value" class="bet-value-display">20</span>
                     <span class="small fw-bold">J</span>
                 </div>
+
                 <div class="d-flex gap-2">
                     <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">SUIVRE</button>
                     <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RELANCER</button>
@@ -138,7 +140,9 @@
             if (currentStatus !== 'showdown') {
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
+
             let stillInGame = data.players.some(p => p.is_me);
+            // On ne reload que si on vient de perdre ou de quitter, sinon on update localement
             if (amISeated && !stillInGame) {
                 amISeated = false;
                 resetGameState();
@@ -159,8 +163,6 @@
                 myHand.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Attente...";
             document.getElementById('board').innerHTML = communityCards.length > 0 ?
                 communityCards.map(card => `<img src="/img/cards/${card}" class="card-img-ui">`).join('') : "Vide.";
-        } else {
-            document.getElementById('myInfo').style.display = 'none';
         }
     }
 
@@ -169,9 +171,12 @@
         let betRange = document.getElementById('bet-range');
         if(action === 'raise') amount = betRange.value;
         if(action === 'allin') amount = betRange.max;
+
         if(['raise', 'allin'].includes(action)) spawnChips(currentTurn);
+
         const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
         buttonsToDisable.forEach(id => { let el = document.getElementById(id); if(el) el.disabled = true; });
+
         try {
             const response = await fetch("/action", {
                 method: "POST",
@@ -179,8 +184,9 @@
                 body: JSON.stringify({ action: action, amount: amount })
             });
             const data = await response.json();
-            updateGameStateLocally(data);
-        } catch (e) { console.error(e); loadPlayers(); }
+            if (response.ok) updateGameStateLocally(data);
+            else loadPlayers();
+        } catch (e) { console.error(e); }
     }
 
     function updateGameStateLocally(data) {
@@ -193,7 +199,7 @@
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
         let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0;
-        playerData = [];
+
         data.players.forEach((p, i) => {
             if(i < nPlayers){
                 playerData[i] = {
@@ -211,18 +217,26 @@
                 }
             }
         });
+
         amISeated = foundMe;
         updateUI();
+
         let betRange = document.getElementById('bet-range');
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
+
         if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
+            // On fixe le min à 0 ou diffToCall pour permettre au dealer/joueur de miser sans bloquer
             betRange.min = 0;
             betRange.max = myChips;
-            if (isMyTurn && parseInt(betRange.value) > myChips) betRange.value = myChips;
+
+            if (isMyTurn && parseInt(betRange.value) > myChips) {
+                betRange.value = myChips;
+            }
             updateBetDisplay();
         }
+
         let callBtn = document.getElementById('act-call');
         if(callBtn) {
             let me = playerData.find(p => p.isMe);
@@ -234,10 +248,12 @@
                 callBtn.innerText = "PAROLE";
             }
         }
+
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
             if(el) el.disabled = !(isMyTurn && playPhase && !isAllInState);
         });
+
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
         if(!amISeated) initButtons();
     }
@@ -254,27 +270,33 @@
     function draw(){
         clear(); background("#073870");
         let cx = width/2, cy = document.getElementById('p5-zone').offsetHeight / 2;
+
         push(); stroke("#3e2003"); strokeWeight(8); fill("#b45f06"); ellipse(cx,cy,tableW+40,tableH+40);
         fill("#1b5e20"); stroke("#144417"); strokeWeight(4); ellipse(cx,cy,tableW,tableH); pop();
+
         if (communityCards.length > 0) {
             let cw = 70, ch = 100, gap = 12;
             let totalW = communityCards.length * (cw + gap) - gap;
             let startX = cx - totalW / 2;
             for (let j = 0; j < communityCards.length; j++) image(getCardImg(communityCards[j]), startX + j * (cw + gap), cy - ch/2 - 20, cw, ch);
         }
+
         textAlign(CENTER); fill("#FFD700"); textSize(24); textStyle(BOLD); text("POT : " + pot + " J", cx, cy + 85);
+
         for(let i = chipParticles.length-1; i>=0; i--) {
             let p = chipParticles[i]; p.t += p.s;
             let x = lerp(p.x, p.tx, p.t); let y = lerp(p.y, p.ty, p.t);
             fill("#FFD700"); stroke(0); strokeWeight(1); ellipse(x, y, 12, 12);
             if(p.t >= 1) chipParticles.splice(i, 1);
         }
+
         if (timer > 0 && currentStatus !== 'waiting') {
             let maxT = (currentStatus === 'showdown' || currentStatus === 'countdown') ? 10 : 20;
             let barW = 200; let progress = (timer / maxT) * barW;
             push(); stroke(255, 30); strokeWeight(4); line(cx - barW/2, 60, cx + barW/2, 60);
             stroke(timer < 4 ? "#ff4444" : "#FFD700"); line(cx - barW/2, 60, cx - barW/2 + progress, 60); pop();
         }
+
         let rx = tableW*0.48, ry = tableH*0.45;
         for(let i=0; i<nPlayers; i++){
             let angle = -Math.PI/2 + i*Math.PI;
@@ -307,6 +329,7 @@
                 if(isHisTurn) fill("#FFD700"); rect(uiX, uiY, infoW, infoH, 8);
                 fill(isHisTurn ? 0 : 255); textAlign(CENTER); textSize(13); textStyle(BOLD); text(playerData[i].name, uiX + infoW/2, uiY + 20);
                 fill(isHisTurn ? 0 : "#FFD700"); text(playerData[i].chips + " J", uiX + infoW/2, uiY + 40); pop();
+
                 if (gameStarted && playerData[i].hasCards) {
                     let jcw = 50, jch = 70, cardX = uiX + infoW + 5, cardY = uiY - 10;
                     if (playerData[i].isMe || currentStatus === 'showdown') {
@@ -326,6 +349,7 @@
                 }
             }
         }
+
         fill(255); textAlign(CENTER); textSize(26); textStyle(BOLD);
         let statusText = "";
         if (currentStatus === 'waiting') statusText = "ATTENTE DE JOUEURS";
@@ -339,11 +363,17 @@
     async function joinPlayer(index){
         let name = prompt("Votre nom :"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
+        // On load les joueurs au lieu de reload la page entière
         loadPlayers().then(() => initButtons());
     }
     function createLogoutButton(){
         logoutBtn = createButton("Quitter"); logoutBtn.addClass('p5-btn'); logoutBtn.position(20, 20); logoutBtn.size(80,30); logoutBtn.style('background', '#ff4444'); logoutBtn.style('color', 'white'); logoutBtn.hide();
-        logoutBtn.mousePressed(async ()=>{ await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}}); amISeated = false; resetGameState(); initButtons(); });
+        logoutBtn.mousePressed(async ()=>{
+            await fetch("/logout",{method:"POST",headers:{"X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content}});
+            amISeated = false;
+            resetGameState();
+            initButtons();
+        });
     }
     function getCardImg(cardName) { if (!cardImages[cardName]) cardImages[cardName] = loadImage("/img/cards/" + cardName); return cardImages[cardName]; }
     function windowResized(){ resizeCanvas(windowWidth, windowHeight); initButtons(); }
