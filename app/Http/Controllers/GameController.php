@@ -128,35 +128,41 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // Si timer expiré et mises inégales -> Fold auto
         $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
         if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
             $this->handleFold($game, $players);
             return;
         }
 
-        // CORRECTION ALL-IN : La phase est finie si :
-        // 1. Les mises sont égales
-        // 2. OU un joueur est à 0 chips ET son adversaire a misé au moins autant que lui
-        $someoneZeroAndCovered = ($p1->chips === 0 && $p1->current_bet <= $p2->current_bet) ||
-            ($p2->chips === 0 && $p2->current_bet <= $p1->current_bet);
+        // CORRECTION : On ne finit la phase QUE si les mises sont égales (Call)
+        // OU si quelqu'un est à 0 ET que l'autre a misé davantage (All-in effectif)
+        $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
+        $allInResolved = $someoneZero && (
+                ($p1->chips === 0 && $p2->current_bet >= $p1->current_bet) ||
+                ($p2->chips === 0 && $p1->current_bet >= $p2->current_bet)
+            );
 
         $isPhaseOver = false;
 
-        if ($someoneZeroAndCovered || in_array($game->status, ['showdown', 'countdown'])) {
+        if (in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
+            // Si les mises sont égales, on vérifie si c'est la fin naturelle du tour
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
                 if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
+        } elseif ($allInResolved) {
+            // Si un joueur est All-in et que l'autre a parlé (Call ou Raise au dessus), on finit.
+            $isPhaseOver = true;
         }
 
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
+            // Sinon, on passe la main à l'autre joueur
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
