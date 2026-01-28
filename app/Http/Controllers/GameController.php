@@ -149,8 +149,22 @@ class GameController extends Controller
 
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
+
+        if ($p1->chips == 0 || $p2->chips == 0) {
+            if ($p1->current_bet != $p2->current_bet) {
+                $minBet = min($p1->current_bet, $p2->current_bet);
+                if ($p1->current_bet > $p2->current_bet) {
+                    $p1->increment('chips', $p1->current_bet - $minBet);
+                    $p1->update(['current_bet' => $minBet]);
+                } else {
+                    $p2->increment('chips', $p2->current_bet - $minBet);
+                    $p2->update(['current_bet' => $minBet]);
+                }
+            }
+        }
+
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
-        $betsEqual = ($p1->current_bet == $p2->current_bet || ($p1->chips == 0 && $p1->current_bet <= $p2->current_bet) || ($p2->chips == 0 && $p2->current_bet <= $p1->current_bet));
+        $betsEqual = ($p1->current_bet == $p2->current_bet);
 
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
@@ -190,25 +204,16 @@ class GameController extends Controller
                 break;
 
             case 'river':
-                if ($p1->current_bet != $p2->current_bet) {
-                    $minBet = min($p1->current_bet, $p2->current_bet);
-                    if ($p1->current_bet > $p2->current_bet) {
-                        $p1->increment('chips', $p1->current_bet - $minBet);
-                        $p1->update(['current_bet' => $minBet]);
-                    } else {
-                        $p2->increment('chips', $p2->current_bet - $minBet);
-                        $p2->update(['current_bet' => $minBet]);
-                    }
-                }
-
                 $this->collectBets($game);
 
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
 
-                if ($p1S > $p2S) $p1->increment('chips', $game->pot);
-                elseif ($p2S > $p1S) $p2->increment('chips', $game->pot);
-                else {
+                if ($p1S > $p2S) {
+                    $p1->increment('chips', $game->pot);
+                } elseif ($p2S > $p1S) {
+                    $p2->increment('chips', $game->pot);
+                } else {
                     $half = floor($game->pot / 2);
                     $p1->increment('chips', $half);
                     $p2->increment('chips', $game->pot - $half);
