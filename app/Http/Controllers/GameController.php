@@ -67,11 +67,9 @@ class GameController extends Controller
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
-        // Crucial: toujours ordonner pour que l'index corresponde au tour
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // On vérifie si c'est bien mon tour dans la liste ordonnée
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -81,12 +79,13 @@ class GameController extends Controller
             return $this->gameResponse($game->fresh(), $pokerService);
         }
 
-        // Si l'action est un bet/call/raise, on traite le changement de tour
         $this->processTurnAction($game, $pokerService);
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
     private function handleFold($game, $players) {
+        if ($players->count() < 2) return;
+
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
         $p1 = $players[0];
         $p2 = $players[1];
@@ -196,7 +195,7 @@ class GameController extends Controller
 
                 $game->update([
                     'status' => $nextStatus,
-                    'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, $cardsToDeal)),
+                    'community_cards' => array_merge($game->community_cards ?? [], $pokerService->deal($deck, $cardsToDeal)),
                     'deck' => $deck,
                     'timer_at' => $now->addSeconds($duration),
                     'current_turn' => $nextToAct
@@ -277,10 +276,16 @@ class GameController extends Controller
 
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
+
+        // FIX: Nettoyage des anciennes sessions orphelines du même joueur avant de rejoindre
+        Player::where('session_token', session('player_token'))->delete();
+
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
+
         $token = Str::random(32);
         $game->players()->create(['name' => $request->name, 'chips' => 1000, 'session_token' => $token]);
         session(['player_token' => $token]);
+
         return response()->json(['message' => 'Success']);
     }
 
