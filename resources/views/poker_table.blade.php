@@ -80,7 +80,9 @@
     setInterval(() => { if(timer > 0) timer--; }, 1000);
 
     function updateBetDisplay() {
-        document.getElementById('bet-value').innerText = document.getElementById('bet-range').value;
+        let val = document.getElementById('bet-range').value;
+        let max = document.getElementById('bet-range').max;
+        document.getElementById('bet-value').innerText = (val === max && max > 0) ? "TAPIS (" + val + ")" : val;
     }
 
     function toggleMenu() {
@@ -188,7 +190,7 @@
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
-        let myBet = 0, otherMaxBet = 0, foundMe = false;
+        let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0;
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
@@ -201,7 +203,7 @@
                     foundMe = true; amISeated = true;
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
-                    document.getElementById('bet-range').max = p.chips;
+                    myChips = p.chips;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
                 }
@@ -210,6 +212,18 @@
 
         amISeated = foundMe;
         updateUI();
+
+        let betRange = document.getElementById('bet-range');
+        if (betRange && foundMe) {
+            let diff = otherMaxBet - myBet;
+            let minRaise = diff + 40;
+            betRange.min = Math.min(myChips, minRaise);
+            betRange.max = myChips;
+            if (parseInt(betRange.value) < parseInt(betRange.min)) {
+                betRange.value = betRange.min;
+                updateBetDisplay();
+            }
+        }
 
         let isMyTurn = (playerData[currentTurn] && playerData[currentTurn].isMe);
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
