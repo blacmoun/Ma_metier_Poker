@@ -211,7 +211,8 @@
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
                     myChips = p.chips;
-                    if(i === currentTurn) isItMyTurn = true;
+                    // FIX: Verification directe sur l'index de la boucle
+                    if(i === data.currentTurn) isItMyTurn = true;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
                 }
@@ -225,11 +226,8 @@
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
         if (betRange && foundMe) {
-            // REGLE RAISE : Si qqun mise 100, on doit pouvoir relancer à min 200 (100 de call + 100 de raise)
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            let minRaise = otherMaxBet > 0 ? otherMaxBet + (otherMaxBet - myBet) : 20;
-            // Correction simplifiée pour coller à ta demande :
-            if(otherMaxBet > 0) minRaise = otherMaxBet + Math.max(20, otherMaxBet);
+            let minRaise = otherMaxBet > 0 ? otherMaxBet + Math.max(20, otherMaxBet) : 20;
 
             betRange.min = Math.min(myChips, Math.max(20, minRaise));
             betRange.max = myChips;
@@ -239,11 +237,9 @@
 
         let callBtn = document.getElementById('act-call');
         if(callBtn) {
-            let me = playerData.find(p => p.isMe);
             if (otherMaxBet > myBet) {
                 let diff = otherMaxBet - myBet;
-                let displayAmount = me ? Math.min(me.chips, diff) : diff;
-                callBtn.innerText = "SUIVRE " + displayAmount;
+                callBtn.innerText = "SUIVRE " + Math.min(myChips, diff);
             } else {
                 callBtn.innerText = "PAROLE";
             }
