@@ -128,36 +128,33 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
+        // Si timer expiré et mises inégales -> Fold auto
         $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
         if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
             $this->handleFold($game, $players);
             return;
         }
 
-        // Un tapis est "appelé" si les mises sont égales OU si celui qui n'a plus de jetons a misé tout ce qu'il pouvait
-        $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
-        $someoneZeroAndCalled = $someoneZero && $betsEqual;
-
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
         $isPhaseOver = false;
 
         if ($someoneZeroAndCalled || in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
-            // Au pre-flop, le dernier à parler est la BB (celui qui n'est PAS dealer)
+            // Au pre-flop, le dernier à parler est la Grosse Blinde (index opposé au dealer)
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                // Aux autres tours, le dernier à parler est le Dealer
-                $lastToAct = ($game->dealer_index == 0) ? 0 : 1;
-                if ($game->current_turn == $lastToAct) $isPhaseOver = true;
+                // Post-flop, le dernier à parler est le Dealer
+                if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
         }
 
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // On change de tour
+            // Alterne le tour entre 0 et 1
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
@@ -174,7 +171,7 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
 
-        // Gestion du surplus All-in avant de passer à la suite
+        // Gestion du surplus All-in
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
                 $minBet = min($p1->current_bet, $p2->current_bet);
@@ -206,7 +203,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index, // Le dealer parle en premier au pre-flop
+                    'current_turn' => (int)$game->dealer_index, // Le Dealer parle en premier au Pre-flop
                     'pot' => 0
                 ]);
                 break;
@@ -217,7 +214,8 @@ class GameController extends Controller
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
-                // Après le flop, c'est le non-dealer qui parle en premier
+
+                // RÈGLE POKER : Après le flop, c'est celui qui n'est PAS dealer qui commence
                 $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
 
                 $game->update([
