@@ -166,7 +166,6 @@
     }
 
     async function handlePlay(action) {
-        // Désactivation immédiate anti-spam
         const buttonsToDisable = ['act-call', 'act-raise', 'act-fold', 'act-allin'];
         buttonsToDisable.forEach(id => {
             let el = document.getElementById(id);

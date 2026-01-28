@@ -34,9 +34,9 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
 
+        // Équilibrage des mises avant de collecter dans le pot
         if ($p1->current_bet !== $p2->current_bet) {
             $minBet = min($p1->current_bet, $p2->current_bet);
-
             if ($p1->current_bet > $p2->current_bet) {
                 $extra = $p1->current_bet - $minBet;
                 $p1->increment('chips', $extra);
@@ -47,6 +47,8 @@ class GameController extends Controller
                 $p2->update(['current_bet' => $minBet]);
             }
         }
+
+        $game->refresh();
         $totalBets = $game->players->sum('current_bet');
         if ($totalBets > 0) {
             $game->increment('pot', $totalBets);
@@ -87,9 +89,13 @@ class GameController extends Controller
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // FIX BLOCAGE : On vérifie l'ID du joueur dont c'est le tour
-        if (!$me || in_array($game->status, ['showdown', 'countdown', 'waiting']) ||
-            !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
+        // FIX BLOCAGE : Vérification stricte de l'index du tour
+        $isMyTurn = false;
+        if ($me && isset($players[$game->current_turn]) && $players[$game->current_turn]->id === $me->id) {
+            $isMyTurn = true;
+        }
+
+        if (!$isMyTurn || in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
             return $this->gameResponse($game, $pokerService);
         }
 
@@ -105,22 +111,19 @@ class GameController extends Controller
     private function handleFold($game, $players) {
         if ($players->count() < 2) return;
 
-        // FIX GAINS INDUS : Le gagnant est celui qui n'est PAS en train de jouer (celui qui n'a pas fold)
         $winnerIndex = ($game->current_turn == 0) ? 1 : 0;
         $winner = $players[$winnerIndex];
-        $loser = $players[$game->current_turn];
 
-        $callAmount = min($players[0]->current_bet, $players[1]->current_bet);
-        $deadMoney = $game->pot + ($callAmount * 2);
+        // On récupère les mises actuelles avant reset
+        $p1 = $players[0]; $p2 = $players[1];
+        $commonBet = min($p1->current_bet, $p2->current_bet);
 
-        $winner->increment('chips', $deadMoney);
+        // Le gagnant prend le pot + les mises équilibrées
+        $winner->increment('chips', $game->pot + ($commonBet * 2));
 
-        // Remboursement du surplus de mise éventuel au perdant ou gagnant
-        if ($players[0]->current_bet > $players[1]->current_bet) {
-            $players[0]->increment('chips', $players[0]->current_bet - $players[1]->current_bet);
-        } elseif ($players[1]->current_bet > $players[0]->current_bet) {
-            $players[1]->increment('chips', $players[1]->current_bet - $players[0]->current_bet);
-        }
+        // Remboursement du surplus à celui qui a trop misé
+        if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
+        if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $p1->current_bet);
 
         foreach ($players as $p) $p->update(['current_bet' => 0, 'hand' => null]);
         $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => Carbon::now()->addSeconds($this->showdownDuration)]);
@@ -130,17 +133,10 @@ class GameController extends Controller
         $players = $game->players()->orderBy('id', 'asc')->get();
         if ($players->count() < 2) return;
 
-        $p1 = $players[0];
-        $p2 = $players[1];
+        $p1 = $players[0]; $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // Si le timer expire, celui dont c'est le tour fold
-        $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
-        if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
-            $this->handleFold($game, $players);
-            return;
-        }
-
+        // All-in ?
         $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
         $allInResolved = $someoneZero && (
                 ($p1->chips === 0 && $p2->current_bet >= $p1->current_bet) ||
@@ -149,9 +145,7 @@ class GameController extends Controller
 
         $isPhaseOver = false;
 
-        if (in_array($game->status, ['showdown', 'countdown'])) {
-            $isPhaseOver = true;
-        } elseif ($allInResolved) {
+        if ($allInResolved) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
@@ -165,24 +159,8 @@ class GameController extends Controller
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Logique de changement de tour
-            $nextTurn = ($game->current_turn == 0) ? 1 : 0;
-
-            // FIX : On ne force le tour du Dealer que lors du premier affichage (GET)
-            // Si c'est un POST (le joueur a cliqué), on laisse le tour changer.
-            if ($game->status === 'pre-flop' && !request()->isMethod('post')) {
-                $sbAmount = 20;
-                $bbAmount = 40;
-                $currentBets = [$p1->current_bet, $p2->current_bet];
-
-                // Si on est encore sur les blindes de départ, c'est au Dealer (SB) de parler
-                if (in_array($sbAmount, $currentBets) && in_array($bbAmount, $currentBets)) {
-                    $nextTurn = $game->dealer_index;
-                }
-            }
-
             $game->update([
-                'current_turn' => $nextTurn,
+                'current_turn' => ($game->current_turn == 0) ? 1 : 0,
                 'timer_at' => Carbon::now()->addSeconds($this->turnDuration)
             ]);
         }
@@ -194,26 +172,23 @@ class GameController extends Controller
         if ($players->count() < 2) return;
 
         $p1 = $players[0]; $p2 = $players[1];
-        $deck = $game->deck ?? [];
 
-        // Gestion du surplus All-in
+        // FIX REDISTRIBUTION ALL-IN : Rembourser le surplus avant d'avancer
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
-                $minBet = min($p1->current_bet, $p2->current_bet);
                 if ($p1->current_bet > $p2->current_bet) {
-                    $p1->increment('chips', $p1->current_bet - $minBet);
-                    $p1->update(['current_bet' => $minBet]);
+                    $p1->increment('chips', $p1->current_bet - $p2->current_bet);
+                    $p1->update(['current_bet' => $p2->current_bet]);
                 } else {
-                    $p2->increment('chips', $p2->current_bet - $minBet);
-                    $p2->update(['current_bet' => $minBet]);
+                    $p2->increment('chips', $p2->current_bet - $p1->current_bet);
+                    $p2->update(['current_bet' => $p1->current_bet]);
                 }
             }
         }
 
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
-        $betsEqual = ($p1->current_bet == $p2->current_bet);
-        $auto = ($someoneZero && $betsEqual);
-        $duration = $auto ? $this->allInSpeed : $this->turnDuration;
+        $duration = $someoneZero ? $this->allInSpeed : $this->turnDuration;
+        $deck = $game->deck ?? [];
 
         switch ($game->status) {
             case 'countdown':
@@ -239,14 +214,12 @@ class GameController extends Controller
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
-                $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
-
                 $game->update([
                     'status' => $nextStatus,
                     'community_cards' => array_merge($game->community_cards ?? [], $pokerService->deal($deck, $cardsToDeal)),
                     'deck' => $deck,
                     'timer_at' => $now->addSeconds($duration),
-                    'current_turn' => $nextToAct
+                    'current_turn' => ($game->dealer_index == 0) ? 1 : 0
                 ]);
                 break;
 
