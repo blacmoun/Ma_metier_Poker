@@ -89,7 +89,8 @@ class GameController extends Controller
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
+        // BLOCAGE ACTIONS SI SHOWDOWN OU PAS MON TOUR
+        if (!$me || in_array($game->status, ['showdown', 'countdown', 'waiting']) || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
 
@@ -147,11 +148,15 @@ class GameController extends Controller
         } elseif ($allInResolved) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
-            // RÈGLE : Si les mises sont égales, on finit SEULEMENT si tout le monde a parlé
+            // LOGIQUE DE FIN DE TOUR :
+            // Si c'est un CALL (les mises étaient différentes et maintenant égales) -> Phase finie
+            // Si c'est un CHECK (mises égales dès le début) -> On regarde qui a parlé en dernier
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
+                // Au pre-flop, si les deux ont mis 40 (BB), c'est fini si c'est le tour de la BB.
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
+                // Post-flop, le dealer parle en dernier.
                 if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
         }
@@ -159,13 +164,10 @@ class GameController extends Controller
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // On ne change le tour que si l'action vient d'un clic (Request)
-            // ou si c'est le déclenchement automatique du début de phase
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
 
-            // Sécurité : Au pre-flop, si les mises sont différentes (20 vs 40),
-            // c'est au Dealer (SB) de parler, on ne change pas de tour tout de suite.
-            if ($game->status === 'pre-flop' && !$betsEqual && request()->isMethod('get')) {
+            // Protection Pre-flop : le dealer (SB) doit pouvoir jouer son premier tour à 20 contre 40.
+            if ($game->status === 'pre-flop' && $game->current_turn == $game->dealer_index && $p1->current_bet != $p2->current_bet && request()->isMethod('get')) {
                 $nextTurn = $game->dealer_index;
             }
 
@@ -216,7 +218,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => (int)$game->dealer_index, // Le Dealer parle en premier au Pre-flop
+                    'current_turn' => (int)$game->dealer_index,
                     'pot' => 0
                 ]);
                 break;
@@ -227,8 +229,6 @@ class GameController extends Controller
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
-
-                // RÈGLE POKER : Après le flop, c'est celui qui n'est PAS dealer qui commence
                 $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
 
                 $game->update([
@@ -314,16 +314,11 @@ class GameController extends Controller
 
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
-
-        // FIX: Nettoyage des anciennes sessions orphelines du même joueur avant de rejoindre
         Player::where('session_token', session('player_token'))->delete();
-
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
-
         $token = Str::random(32);
         $game->players()->create(['name' => $request->name, 'chips' => 1000, 'session_token' => $token]);
         session(['player_token' => $token]);
-
         return response()->json(['message' => 'Success']);
     }
 
