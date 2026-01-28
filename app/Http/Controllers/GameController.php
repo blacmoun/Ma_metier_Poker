@@ -67,11 +67,9 @@ class GameController extends Controller
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
-        // Correction: On s'assure de récupérer les joueurs dans le même ordre que le current_turn
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // Vérification stricte du tour
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -288,9 +286,13 @@ class GameController extends Controller
     public function logout() {
         $p = Player::where('session_token', session('player_token'))->first();
         if ($p) {
-            $g = Game::find($p->game_id);
-            if ($g) $this->resetToWaiting($g);
+            $gameId = $p->game_id;
             $p->delete();
+
+            $g = Game::find($gameId);
+            if ($g) {
+                $this->resetToWaiting($g);
+            }
         }
         session()->forget('player_token');
         return response()->json(['message' => 'Success']);
