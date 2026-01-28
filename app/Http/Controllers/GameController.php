@@ -135,19 +135,21 @@ class GameController extends Controller
             return;
         }
 
-        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
+        // CORRECTION ALL-IN : La phase est finie si :
+        // 1. Les mises sont égales
+        // 2. OU un joueur est à 0 chips ET son adversaire a misé au moins autant que lui
+        $someoneZeroAndCovered = ($p1->chips === 0 && $p1->current_bet <= $p2->current_bet) ||
+            ($p2->chips === 0 && $p2->current_bet <= $p1->current_bet);
+
         $isPhaseOver = false;
 
-        if ($someoneZeroAndCalled || in_array($game->status, ['showdown', 'countdown'])) {
+        if ($someoneZeroAndCovered || in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
-            // RÈGLE : La phase ne finit que si les mises sont égales ET que le tour est revenu au dernier joueur
             if ($game->status === 'pre-flop') {
-                // Au pre-flop, le dernier à parler est la Grosse Blinde
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                // Post-flop, le dernier à parler est le Dealer (Bouton)
                 if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
         }
@@ -155,8 +157,6 @@ class GameController extends Controller
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Si les mises sont égales mais que ce n'est pas encore la fin de phase (ex: Check du premier joueur),
-            // ou si quelqu'un vient de relancer, on passe le tour à l'autre.
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
