@@ -134,8 +134,6 @@ class GameController extends Controller
             return;
         }
 
-        // CORRECTION : On ne finit la phase QUE si les mises sont égales (Call)
-        // OU si quelqu'un est à 0 ET que l'autre a misé davantage (All-in effectif)
         $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
         $allInResolved = $someoneZero && (
                 ($p1->chips === 0 && $p2->current_bet >= $p1->current_bet) ||
@@ -146,24 +144,31 @@ class GameController extends Controller
 
         if (in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
+        } elseif ($allInResolved) {
+            $isPhaseOver = true;
         } elseif ($betsEqual) {
-            // Si les mises sont égales, on vérifie si c'est la fin naturelle du tour
+            // RÈGLE : Si les mises sont égales, on finit SEULEMENT si tout le monde a parlé
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
                 if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
-        } elseif ($allInResolved) {
-            // Si un joueur est All-in et que l'autre a parlé (Call ou Raise au dessus), on finit.
-            $isPhaseOver = true;
         }
 
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Sinon, on passe la main à l'autre joueur
+            // On ne change le tour que si l'action vient d'un clic (Request)
+            // ou si c'est le déclenchement automatique du début de phase
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
+
+            // Sécurité : Au pre-flop, si les mises sont différentes (20 vs 40),
+            // c'est au Dealer (SB) de parler, on ne change pas de tour tout de suite.
+            if ($game->status === 'pre-flop' && !$betsEqual && request()->isMethod('get')) {
+                $nextTurn = $game->dealer_index;
+            }
+
             $game->update([
                 'current_turn' => $nextTurn,
                 'timer_at' => Carbon::now()->addSeconds($this->turnDuration)
