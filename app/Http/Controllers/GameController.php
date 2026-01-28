@@ -70,6 +70,7 @@ class GameController extends Controller
         $players = $game->players->values();
         $me = $players->firstWhere('session_token', session('player_token'));
 
+        // Vérification stricte du tour
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -94,7 +95,7 @@ class GameController extends Controller
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
-    // Fonction centralisée pour le Fold
+    // Gère le fold (manuel ou automatique par timer)
     private function handleFold($game, $players) {
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
         $winner->increment('chips', $game->pot + $players->sum('current_bet'));
@@ -110,11 +111,9 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // LOGIQUE DU TIMER EXPIRE
+        // --- CORRECTION TIMER / FOLD AUTO ---
         $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
-
         if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
-            // Si le temps est fini et que les mises ne sont pas égales : FOLD automatique du joueur actuel
             $this->handleFold($game, $players);
             return;
         }
@@ -127,10 +126,10 @@ class GameController extends Controller
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                // On vérifie l'ID pour être sûr de qui doit parler (règle de la Big Blind)
-                if ($players[$game->current_turn]->id === $players[$bbIndex]->id) $isPhaseOver = true;
+                // Si J2 (Big Blind) a égalé ou checké, la phase est finie
+                if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                // Après le flop, si J2 parle et que c'est égal, on change de phase
+                // Post-flop : le tour se termine après que le deuxième joueur (index 1) a parlé
                 if ($game->current_turn == 1) $isPhaseOver = true;
             }
         }
@@ -138,6 +137,7 @@ class GameController extends Controller
         if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
             $this->advanceGameState($game, $pokerService);
         } else {
+            // Changement de tour fluide entre 0 et 1
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
@@ -151,8 +151,7 @@ class GameController extends Controller
         $players = $game->players->values();
         if ($players->count() < 2) return;
 
-        $p1 = $players[0];
-        $p2 = $players[1];
+        $p1 = $players[0]; $p2 = $players[1];
         $deck = $game->deck ?? [];
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
@@ -165,7 +164,6 @@ class GameController extends Controller
                 $newDeck = $pokerService->createDeck();
                 $p1_bet = ($game->dealer_index == 0) ? 20 : 40;
                 $p2_bet = ($game->dealer_index == 1) ? 20 : 40;
-
                 $p1->update(['current_bet' => $p1_bet, 'chips' => max(0, $p1->chips - $p1_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
                 $p2->update(['current_bet' => $p2_bet, 'chips' => max(0, $p2->chips - $p2_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
 
@@ -174,7 +172,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index,
+                    'current_turn' => $game->dealer_index, // Le dealer commence au pre-flop
                     'pot' => 0
                 ]);
                 break;
@@ -210,13 +208,14 @@ class GameController extends Controller
                     $bkr->delete();
                     $this->resetToWaiting($game);
                 } else {
+                    $newDealer = ($game->dealer_index == 0 ? 1 : 0);
                     $game->update([
                         'status' => 'countdown',
                         'timer_at' => $now->addSeconds(5),
                         'community_cards' => [],
-                        'dealer_index' => ($game->dealer_index == 0 ? 1 : 0),
+                        'dealer_index' => $newDealer,
                         'pot' => 0,
-                        'current_turn' => ($game->dealer_index == 0 ? 1 : 0)
+                        'current_turn' => $newDealer
                     ]);
                     Player::where('game_id', $game->id)->update(['hand' => null, 'current_bet' => 0]);
                 }
