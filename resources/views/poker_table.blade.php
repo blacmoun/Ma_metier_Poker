@@ -200,11 +200,19 @@
     }
 
     function updateGameStateLocally(data) {
+        if (currentStatus !== data.status) {
+            timer = data.timer;
+        } else {
+            if (Math.abs(timer - data.timer) > 2) {
+                timer = data.timer;
+            }
+        }
+
         currentStatus = data.status;
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
-        timer = data.timer;
-        currentTurn = parseInt(data.currentTurn); // Force l'entier
+
+        currentTurn = parseInt(data.currentTurn);
         communityCards = data.community_cards || [];
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
@@ -223,7 +231,7 @@
                     active: true,
                     isMe: p.is_me,
                     hasCards: p.has_cards,
-                    current_bet: p.current_bet || 0, // Attention au nommage ici
+                    current_bet: p.current_bet || 0,
                     currentBet: p.current_bet || 0,
                     hand: p.hand || [],
                     handName: p.hand_name
@@ -235,7 +243,6 @@
                     myHand = p.hand || [];
                     myBet = p.current_bet || 0;
                     myChips = p.chips;
-                    // Vérification CRUCIALE du tour
                     if(i === currentTurn) isItMyTurn = true;
                 } else {
                     otherMaxBet = Math.max(otherMaxBet, p.current_bet || 0);
@@ -246,23 +253,20 @@
         amISeated = foundMe;
         updateUI();
 
-        // Gestion de l'interface de mise
         let betRange = document.getElementById('bet-range');
         let playPhase = ['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus);
 
         if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            // On ne peut relancer qu'au dessus de la mise adverse
-            let minRaise = otherMaxBet > 0 ? otherMaxBet + 20 : 20;
+            let minRaise = otherMaxBet > 0 ? (otherMaxBet + 20) : 20;
 
             betRange.min = Math.min(myChips, minRaise);
             betRange.max = myChips;
-            // Ajuster la valeur si elle est hors limites
+
             if (parseInt(betRange.value) < betRange.min) betRange.value = betRange.min;
             updateBetDisplay();
         }
 
-        // Mise à jour du bouton SUIVRE/PAROLE
         let callBtn = document.getElementById('act-call');
         if(callBtn) {
             if (otherMaxBet > myBet) {
@@ -273,8 +277,6 @@
             }
         }
 
-        // BLOCAGE FINAL DES BOUTONS
-        // On bloque si : Pas mon tour, OU phase de résultat, OU tapis déjà engagé
         const canPlay = isItMyTurn && playPhase && !isAllInState;
 
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
