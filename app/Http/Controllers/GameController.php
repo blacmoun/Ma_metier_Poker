@@ -43,7 +43,6 @@ class GameController extends Controller
             $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
         }
 
-        // On rafraîchit les joueurs pour être sûr d'avoir les bons index
         $players = $game->players->values();
         $count = $players->count();
 
@@ -52,7 +51,6 @@ class GameController extends Controller
         }
 
         if ($count === 2 && $game->status === 'waiting') {
-            // On s'assure que le tour est bien initialisé au dealer pour le countdown
             $game->update([
                 'status' => 'countdown',
                 'timer_at' => Carbon::now()->addSeconds(10),
@@ -72,7 +70,6 @@ class GameController extends Controller
         $players = $game->players->values();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // Validation du tour : Vérifie si le joueur existe et si c'est son tour
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -107,20 +104,20 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
-        $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
+
+        // MODIFICATION 1 : On détecte si un joueur est à 0 ET que les mises sont égales (Call effectué)
+        $someoneZeroAndCalled = ($p1->chips === 0 || $p2->chips === 0) && $betsEqual;
 
         $isPhaseOver = false;
 
-        if ($betsEqual) {
-            if ($someoneZero) {
-                $isPhaseOver = true;
+        if ($someoneZeroAndCalled) {
+            $isPhaseOver = true;
+        } elseif ($betsEqual) {
+            if ($game->status === 'pre-flop') {
+                $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
+                if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                if ($game->status === 'pre-flop') {
-                    $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                    if ($game->current_turn == $bbIndex) $isPhaseOver = true;
-                } else {
-                    if ($game->current_turn == 1) $isPhaseOver = true;
-                }
+                if ($game->current_turn == 1) $isPhaseOver = true;
             }
         }
 
@@ -137,7 +134,6 @@ class GameController extends Controller
 
     private function advanceGameState($game, $pokerService) {
         $now = Carbon::now();
-        // Crucial : On s'assure de récupérer les joueurs fraîchement pour les index
         $players = $game->players->values();
         if ($players->count() < 2) return;
 
@@ -148,6 +144,7 @@ class GameController extends Controller
         $someoneZero = ($p1->chips == 0 || $p2->chips == 0);
         $betsEqual = ($p1->current_bet == $p2->current_bet);
 
+        // MODIFICATION 2 : L'auto-déroulement s'active si quelqu'un est à tapis ET que les mises sont égalisées
         $auto = ($someoneZero && $betsEqual);
         $duration = $auto ? $this->allInSpeed : $this->turnDuration;
 
@@ -165,7 +162,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index, // Le dealer commence au pre-flop (Small Blind)
+                    'current_turn' => $game->dealer_index,
                     'pot' => 0
                 ]);
                 break;
@@ -223,7 +220,9 @@ class GameController extends Controller
 
     public function gameResponse($game, $pokerService = null) {
         $p = $game->players->values();
-        $isLocked = ($p->count() === 2 && $p->contains('chips', 0) && ($p[0]->current_bet === $p[1]->current_bet) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
+
+        // MODIFICATION 3 : Mise à jour de la détection de verrouillage pour l'affichage (Front-end)
+        $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
             'players' => $p->map(function($player) use ($game, $pokerService) {
