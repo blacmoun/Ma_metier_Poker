@@ -142,7 +142,6 @@
             }
 
             let stillInGame = data.players.some(p => p.is_me);
-            // On ne reload que si on vient de perdre ou de quitter, sinon on update localement
             if (amISeated && !stillInGame) {
                 amISeated = false;
                 resetGameState();
@@ -227,7 +226,6 @@
 
         if (betRange && foundMe) {
             let diffToCall = Math.max(0, otherMaxBet - myBet);
-            // On fixe le min à 0 ou diffToCall pour permettre au dealer/joueur de miser sans bloquer
             betRange.min = 0;
             betRange.max = myChips;
 
@@ -251,7 +249,7 @@
 
         ['act-call', 'act-raise', 'act-fold', 'act-allin', 'bet-range'].forEach(id => {
             let el = document.getElementById(id);
-            if(el) el.disabled = !(isMyTurn && playPhase && !isAllInState);
+            if(el) el.disabled = !(isMyTurn && playPhase);
         });
 
         if(logoutBtn) amISeated ? logoutBtn.show() : logoutBtn.hide();
@@ -363,7 +361,6 @@
     async function joinPlayer(index){
         let name = prompt("Votre nom :"); if(!name) return;
         await fetch("/join",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content},body: JSON.stringify({name})});
-        // On load les joueurs au lieu de reload la page entière
         loadPlayers().then(() => initButtons());
     }
     function createLogoutButton(){
