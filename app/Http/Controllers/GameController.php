@@ -34,7 +34,6 @@ class GameController extends Controller
         $p1 = $players[0];
         $p2 = $players[1];
 
-        // Équilibrage des mises avant de collecter dans le pot
         if ($p1->current_bet !== $p2->current_bet) {
             $minBet = min($p1->current_bet, $p2->current_bet);
             if ($p1->current_bet > $p2->current_bet) {
@@ -65,31 +64,41 @@ class GameController extends Controller
         }
 
         $players = $game->players()->orderBy('id', 'asc')->get();
+
+        // 1. Reset si un joueur manque
         if ($players->count() < 2 && $game->status !== 'waiting') {
             $this->resetToWaiting($game);
+            return $this->gameResponse($game->fresh(), $pokerService);
         }
 
+        // 2. Lancement du compte à rebours (Strict: seulement si on est en waiting)
         if ($players->count() === 2 && $game->status === 'waiting') {
             $game->update([
                 'status' => 'countdown',
                 'timer_at' => Carbon::now()->addSeconds(10),
-                'current_turn' => $game->dealer_index
+                'current_turn' => (int)$game->dealer_index
             ]);
+            return $this->gameResponse($game->fresh(), $pokerService);
         }
 
-        if ($game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at))) {
-            $this->processTurnAction($game, $pokerService);
+        // 3. Gestion de l'expiration du timer
+        if ($game->status !== 'waiting' && $game->timer_at) {
+            if (Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at))) {
+                $this->processTurnAction($game, $pokerService);
+                return $this->gameResponse($game->fresh(), $pokerService);
+            }
         }
 
-        return $this->gameResponse($game->fresh(), $pokerService);
+        return $this->gameResponse($game, $pokerService);
     }
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
+        if (!$game) return response()->json(['error' => 'No game'], 404);
+
         $players = $game->players()->orderBy('id', 'asc')->get();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // FIX BLOCAGE : Vérification stricte de l'index du tour
         $isMyTurn = false;
         if ($me && isset($players[$game->current_turn]) && $players[$game->current_turn]->id === $me->id) {
             $isMyTurn = true;
@@ -114,14 +123,11 @@ class GameController extends Controller
         $winnerIndex = ($game->current_turn == 0) ? 1 : 0;
         $winner = $players[$winnerIndex];
 
-        // On récupère les mises actuelles avant reset
         $p1 = $players[0]; $p2 = $players[1];
         $commonBet = min($p1->current_bet, $p2->current_bet);
 
-        // Le gagnant prend le pot + les mises équilibrées
         $winner->increment('chips', $game->pot + ($commonBet * 2));
 
-        // Remboursement du surplus à celui qui a trop misé
         if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
         if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $p1->current_bet);
 
@@ -136,7 +142,6 @@ class GameController extends Controller
         $p1 = $players[0]; $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // All-in ?
         $someoneZero = ($p1->chips === 0 || $p2->chips === 0);
         $allInResolved = $someoneZero && (
                 ($p1->chips === 0 && $p2->current_bet >= $p1->current_bet) ||
@@ -173,6 +178,7 @@ class GameController extends Controller
 
         $p1 = $players[0]; $p2 = $players[1];
 
+        // Équilibrage final pour les All-ins
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
                 if ($p1->current_bet > $p2->current_bet) {
