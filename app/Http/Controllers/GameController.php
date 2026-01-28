@@ -141,12 +141,13 @@ class GameController extends Controller
         if ($someoneZeroAndCalled || in_array($game->status, ['showdown', 'countdown'])) {
             $isPhaseOver = true;
         } elseif ($betsEqual) {
-            // Au pre-flop, le dernier à parler est la Grosse Blinde (index opposé au dealer)
+            // RÈGLE : La phase ne finit que si les mises sont égales ET que le tour est revenu au dernier joueur
             if ($game->status === 'pre-flop') {
+                // Au pre-flop, le dernier à parler est la Grosse Blinde
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                // Post-flop, le dernier à parler est le Dealer
+                // Post-flop, le dernier à parler est le Dealer (Bouton)
                 if ($game->current_turn == $game->dealer_index) $isPhaseOver = true;
             }
         }
@@ -154,7 +155,8 @@ class GameController extends Controller
         if ($isPhaseOver) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Alterne le tour entre 0 et 1
+            // Si les mises sont égales mais que ce n'est pas encore la fin de phase (ex: Check du premier joueur),
+            // ou si quelqu'un vient de relancer, on passe le tour à l'autre.
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
