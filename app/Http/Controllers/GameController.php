@@ -70,7 +70,6 @@ class GameController extends Controller
         $players = $game->players->values();
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        // Vérification stricte du tour
         if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
             return $this->gameResponse($game, $pokerService);
         }
@@ -95,7 +94,6 @@ class GameController extends Controller
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
-    // Gère le fold (manuel ou automatique par timer)
     private function handleFold($game, $players) {
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
         $winner->increment('chips', $game->pot + $players->sum('current_bet'));
@@ -111,7 +109,6 @@ class GameController extends Controller
         $p2 = $players[1];
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
-        // --- CORRECTION TIMER / FOLD AUTO ---
         $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
         if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
             $this->handleFold($game, $players);
@@ -126,10 +123,8 @@ class GameController extends Controller
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                // Si J2 (Big Blind) a égalé ou checké, la phase est finie
                 if ($game->current_turn == $bbIndex) $isPhaseOver = true;
             } else {
-                // Post-flop : le tour se termine après que le deuxième joueur (index 1) a parlé
                 if ($game->current_turn == 1) $isPhaseOver = true;
             }
         }
@@ -137,7 +132,6 @@ class GameController extends Controller
         if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
             $this->advanceGameState($game, $pokerService);
         } else {
-            // Changement de tour fluide entre 0 et 1
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
@@ -172,7 +166,7 @@ class GameController extends Controller
                     'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index, // Le dealer commence au pre-flop
+                    'current_turn' => $game->dealer_index,
                     'pot' => 0
                 ]);
                 break;
