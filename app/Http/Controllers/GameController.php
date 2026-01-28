@@ -84,8 +84,20 @@ class GameController extends Controller
     }
 
     private function handleFold($game, $players) {
+        $folder = $players[$game->current_turn];
         $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
-        $winner->increment('chips', $game->pot + $players->sum('current_bet'));
+
+        $p1 = $players[0];
+        $p2 = $players[1];
+
+        $callAmount = min($p1->current_bet, $p2->current_bet);
+        $deadMoney = $game->pot + ($callAmount * 2);
+
+        $winner->increment('chips', $deadMoney);
+
+        if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
+        if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $p1->current_bet);
+
         foreach ($players as $p) $p->update(['current_bet' => 0, 'hand' => null]);
         $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => Carbon::now()->addSeconds($this->showdownDuration)]);
     }
@@ -163,26 +175,43 @@ class GameController extends Controller
                 break;
 
             case 'pre-flop':
-                $this->collectBets($game);
-                $game->update(['status' => 'flop', 'community_cards' => $pokerService->deal($deck, 3), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => $firstToAct]);
-                break;
-
             case 'flop':
             case 'turn':
                 $this->collectBets($game);
-                $nextStatus = ($game->status === 'flop') ? 'turn' : 'river';
-                $game->update(['status' => $nextStatus, 'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, 1)), 'deck' => $deck, 'timer_at' => $now->addSeconds($duration), 'current_turn' => $firstToAct]);
+                $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
+                $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
+                $game->update([
+                    'status' => $nextStatus,
+                    'community_cards' => array_merge($game->community_cards, $pokerService->deal($deck, $cardsToDeal)),
+                    'deck' => $deck,
+                    'timer_at' => $now->addSeconds($duration),
+                    'current_turn' => $firstToAct
+                ]);
                 break;
 
             case 'river':
+                if ($p1->current_bet != $p2->current_bet) {
+                    $minBet = min($p1->current_bet, $p2->current_bet);
+                    if ($p1->current_bet > $p2->current_bet) {
+                        $p1->increment('chips', $p1->current_bet - $minBet);
+                        $p1->update(['current_bet' => $minBet]);
+                    } else {
+                        $p2->increment('chips', $p2->current_bet - $minBet);
+                        $p2->update(['current_bet' => $minBet]);
+                    }
+                }
+
                 $this->collectBets($game);
+
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
+
                 if ($p1S > $p2S) $p1->increment('chips', $game->pot);
                 elseif ($p2S > $p1S) $p2->increment('chips', $game->pot);
                 else {
                     $half = floor($game->pot / 2);
-                    $p1->increment('chips', $half); $p2->increment('chips', $half);
+                    $p1->increment('chips', $half);
+                    $p2->increment('chips', $game->pot - $half);
                 }
                 $game->update(['status' => 'showdown', 'pot' => 0, 'timer_at' => $now->addSeconds($this->showdownDuration)]);
                 break;
