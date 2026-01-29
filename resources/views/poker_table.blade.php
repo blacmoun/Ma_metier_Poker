@@ -45,7 +45,6 @@
                 <ul class="nav nav-tabs mb-2" id="uiTabs">
                     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cards">Ma Main</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#board">Table</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stats">Stats</button></li>
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
@@ -75,8 +74,8 @@
                 <div class="d-flex gap-2">
                     <button id="act-call" class="btn btn-outline-warning fw-bold flex-grow-1" onclick="handlePlay('call')">SUIVRE</button>
                     <button id="act-raise" class="btn btn-warning fw-bold flex-grow-1" onclick="handlePlay('raise')">RELANCER</button>
-                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="handlePlay('allin')">TAPIS</button>
-                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="handlePlay('fold')">COUCHER</button>
+                    <button id="act-allin" class="btn btn-danger fw-bold flex-grow-1" onclick="playFX('coin');handlePlay('allin')">TAPIS</button>
+                    <button id="act-fold" class="btn btn-outline-danger fw-bold flex-grow-1" onclick="playFX('bad');handlePlay('fold')">COUCHER</button>
                 </div>
             </div>
         </div>
@@ -332,6 +331,7 @@
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
                     text("👑 GAGNANT 👑", x, y - avatarH/2 - 30 + bounce);
+                    playFX('jackpot');
                     stroke("#FFD700"); strokeWeight(4); noFill(); ellipse(x, y, avatarW + 15, avatarH + 15); pop();
                 }
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
