@@ -48,7 +48,7 @@
                     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#chat">Chat</button></li>
                 </ul>
                 <div class="tab-content border bg-dark p-2" style="height:140px; color: white; overflow-y: auto;">
-                    <div class="tab-pane fade show active" id="cards">En attente des cartes...</div>
+                    <div class="tab-pane fade show active" id="a">En attente des cartes...</div>
                     <div class="tab-pane fade" id="board">Aucune carte sur la table.</div>
                     <div class="tab-pane fade" id="stats">Statistiques de session...</div>
                     <div class="tab-pane fade" id="chat">
@@ -218,6 +218,19 @@
         if (currentStatus === data.status && data.status === "countdown" && data.timer > timer) return;
 
         currentStatus = data.status;
+
+        if (['pre-flop', 'flop', 'turn', 'river'].includes(currentStatus)) {
+            playFX('flip');
+        }
+
+        if (currentStatus === 'showdown') {
+            playerData.forEach((p, i) => {
+                if (p.isMe && p.chips > previousChips[i]) {
+                    playFX('jackpot');
+                }
+            });
+        }
+
         isAllInState = data.is_all_in;
         gameStarted = (['pre-flop', 'flop', 'turn', 'river', 'showdown'].includes(data.status));
 
@@ -331,7 +344,6 @@
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
                     text("👑 GAGNANT 👑", x, y - avatarH/2 - 30 + bounce);
-                    playFX('jackpot');
                     stroke("#FFD700"); strokeWeight(4); noFill(); ellipse(x, y, avatarW + 15, avatarH + 15); pop();
                 }
                 if(imgPlayer) image(imgPlayer, x-avatarW/2, y-avatarH/2, avatarW, avatarH);
