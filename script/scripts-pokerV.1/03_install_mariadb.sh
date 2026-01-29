@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/config.env"
 echo "=== [MARIADB] Installation et configuration de la base de données ==="
 # 1) Installation MariaDB si pas présent
 if ! command -v mariadb >/dev/null 2>&1; then
