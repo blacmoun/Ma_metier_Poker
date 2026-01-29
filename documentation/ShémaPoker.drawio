@@ -1,0 +1,76 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.3.0 Chrome/140.0.7339.249 Electron/38.7.2 Safari/537.36" version="29.3.0">
+  <diagram name="Page-1" id="uH36sVvv8Esm_nJ9CsDV">
+    <mxGraphModel dx="1426" dy="841" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="550" width="690" x="130" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-2" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;autosize=1;resizable=0;" value="Réseau externe" vertex="1">
+          <mxGeometry height="30" width="110" x="130" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="460" width="540" x="250" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-4" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Réseau MAS (réseau interne)" vertex="1">
+          <mxGeometry height="30" width="180" x="410" y="221.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Zone de sécurité" vertex="1">
+          <mxGeometry height="30" width="140" x="255" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="320" width="360" x="410" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-9" parent="1" style="image;aspect=fixed;perimeter=ellipsePerimeter;html=1;align=center;shadow=0;dashed=0;spacingTop=3;image=img/lib/active_directory/internet_cloud.svg;" value="Internet" vertex="1">
+          <mxGeometry height="31.5" width="50" x="170" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-10" parent="1" style="shape=mxgraph.networks2.icon;aspect=fixed;fillColor=#EDEDED;strokeColor=#000000;gradientColor=#5B6163;network2IconShadow=1;network2bgFillColor=none;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;network2Icon=mxgraph.networks2.satellite_dish;network2IconXOffset=-0.0067;network2IconYOffset=0.0022;network2IconW=1.0065;network2IconH=0.9957;" value="Ligne ADSL&#xa;(Accés privé)" vertex="1">
+          <mxGeometry height="40" width="40.43" x="179.57" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-11" parent="1" style="image;html=1;image=img/lib/clip_art/networking/Firewall_02_128x128.png" value="Firewall du Maître" vertex="1">
+          <mxGeometry height="70" width="60" x="300" y="201.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-12" parent="1" style="image;html=1;image=img/lib/clip_art/networking/Firewall_02_128x128.png" value="Firewall du Groupe&amp;nbsp;&lt;br&gt;MAS" vertex="1">
+          <mxGeometry height="70" width="70" x="290" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0050ef;fontColor=#ffffff;strokeColor=#001DBC;" value="Réseau de&lt;br&gt;transit" vertex="1">
+          <mxGeometry height="50" width="50" x="305" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-14" parent="1" style="image;html=1;image=img/lib/clip_art/computers/Server_128x128.png" value="Ubuntu Server" vertex="1">
+          <mxGeometry height="80" width="80" x="450" y="325" as="geometry" />
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-15" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0.283;entryY=0.15;entryDx=0;entryDy=0;entryPerimeter=0;" target="8m7H6GJa6EXSoeGFGhug-10" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="190" y="250" as="sourcePoint" />
+            <mxPoint x="240" y="200" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-16" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="8m7H6GJa6EXSoeGFGhug-13" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="329.5" y="284" as="sourcePoint" />
+            <mxPoint x="330.5" y="360" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-17" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0.283;entryY=0.15;entryDx=0;entryDy=0;entryPerimeter=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="331" y="410" as="sourcePoint" />
+            <mxPoint x="330.5" y="476" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-19" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="489.5" y="260" as="sourcePoint" />
+            <mxPoint x="490" y="336" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8m7H6GJa6EXSoeGFGhug-20" edge="1" parent="1" style="endArrow=classic;html=1;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="329.5" y="134" as="sourcePoint" />
+            <mxPoint x="329.5" y="190" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
