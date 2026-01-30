@@ -207,7 +207,9 @@ class GameController extends Controller
         if ($players->count() < 2) return;
 
         $p1 = $players[0]; $p2 = $players[1];
-        $deck = $game->deck ?? [];
+
+        // FIX: S'assurer que le deck est un tableau, même s'il arrive de la DB en string
+        $deck = is_array($game->deck) ? $game->deck : json_decode($game->deck, true) ?? [];
 
         // Gestion All-in inégale
         if ($p1->chips == 0 || $p2->chips == 0) {
@@ -234,16 +236,15 @@ class GameController extends Controller
                 $p1_bet = ($game->dealer_index == 0) ? 20 : 40;
                 $p2_bet = ($game->dealer_index == 1) ? 20 : 40;
 
-                // Vérification fonds suffisants pour blindes
                 $p1->update(['current_bet' => $p1_bet, 'chips' => max(0, $p1->chips - $p1_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
                 $p2->update(['current_bet' => $p2_bet, 'chips' => max(0, $p2->chips - $p2_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
 
                 $game->update([
                     'status' => 'pre-flop',
-                    'deck' => $newDeck,
+                    'deck' => $newDeck, // Laravel gère le JSON ici si configuré
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => $game->dealer_index, // Le dealer commence au pre-flop (c'est lui qui a la SB)
+                    'current_turn' => (int)$game->dealer_index,
                     'pot' => 0
                 ]);
                 break;
@@ -254,12 +255,15 @@ class GameController extends Controller
                 $this->collectBets($game);
                 $nextStatus = ($game->status === 'pre-flop') ? 'flop' : (($game->status === 'flop') ? 'turn' : 'river');
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
-                $nextToAct = ($game->dealer_index == 0) ? 1 : 0; // Post-flop, SB (le dealer ici) parle en premier si 1v1
+                $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
+
+                // FIX: On récupère les cartes et on met à jour le deck localement
+                $newCards = $pokerService->deal($deck, $cardsToDeal);
 
                 $game->update([
                     'status' => $nextStatus,
-                    'community_cards' => array_merge($game->community_cards ?? [], $pokerService->deal($deck, $cardsToDeal)),
-                    'deck' => $deck,
+                    'community_cards' => array_merge($game->community_cards ?? [], $newCards),
+                    'deck' => $deck, // Le deck a été modifié par référence dans deal()
                     'timer_at' => $now->addSeconds($duration),
                     'current_turn' => $nextToAct
                 ]);
@@ -267,6 +271,7 @@ class GameController extends Controller
 
             case 'river':
                 $this->collectBets($game);
+                // On rafraîchit les joueurs pour avoir le pot à jour
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
 
