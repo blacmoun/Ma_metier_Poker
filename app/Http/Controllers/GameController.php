@@ -87,9 +87,15 @@ class GameController extends Controller
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
         $players = $game->players()->orderBy('id', 'asc')->get();
+
+        // Sécurité : On vérifie l'existence du joueur via sa session
         $me = $players->firstWhere('session_token', session('player_token'));
 
-        if (!$me || $game->status === 'showdown' || !isset($players[$game->current_turn]) || $players[$game->current_turn]->id !== $me->id) {
+        // Correction : On s'assure que l'index current_turn correspond bien à la position dans la collection $players
+        $currentIndex = (int)$game->current_turn;
+        $isMyTurn = ($me && isset($players[$currentIndex]) && $players[$currentIndex]->id === $me->id);
+
+        if (!$isMyTurn || $game->status === 'showdown') {
             return $this->gameResponse($game, $pokerService);
         }
 
@@ -146,6 +152,7 @@ class GameController extends Controller
         $betsEqual = ($p1->current_bet === $p2->current_bet);
 
         $isTimerExpired = $game->timer_at && Carbon::now()->greaterThanOrEqualTo(Carbon::parse($game->timer_at));
+
         if ($isTimerExpired && !$betsEqual && !in_array($game->status, ['showdown', 'countdown', 'waiting'])) {
             $this->handleFold($game, $players);
             return;
@@ -159,16 +166,17 @@ class GameController extends Controller
         } elseif ($betsEqual) {
             if ($game->status === 'pre-flop') {
                 $bbIndex = ($game->dealer_index == 0) ? 1 : 0;
-                if ($game->current_turn == $bbIndex) $isPhaseOver = true;
+                if ((int)$game->current_turn === $bbIndex) $isPhaseOver = true;
             } else {
                 $lastToAct = ($game->dealer_index == 0) ? 0 : 1;
-                if ($game->current_turn == $lastToAct) $isPhaseOver = true;
+                if ((int)$game->current_turn === $lastToAct) $isPhaseOver = true;
             }
         }
 
         if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
             $this->advanceGameState($game, $pokerService);
         } else {
+            // Alternance stricte entre 0 et 1 pour la liste des joueurs
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
