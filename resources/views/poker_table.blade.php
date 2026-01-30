@@ -153,9 +153,18 @@
         }
     }
 
+    // --- CORRECTION MAJEURE ICI ---
     async function loadPlayers(){
         try {
             const res = await fetch("/game");
+
+            // Vérifie si la requête a réussi (code 200)
+            if (!res.ok) {
+                console.warn("Erreur serveur sur /game :", res.status);
+                // On arrête ici pour ne pas provoquer d'erreur de parsing JSON
+                return;
+            }
+
             const data = await res.json();
 
             // Detection changement de tour pour son notif
@@ -168,7 +177,9 @@
             }
 
             updateGameStateLocally(data);
-        } catch(e) { console.error("Sync Error:", e); }
+        } catch(e) {
+            console.error("Sync Error:", e);
+        }
     }
 
     function updateUI() {
@@ -202,8 +213,17 @@
                 headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content },
                 body: JSON.stringify({ action: action, amount: amount })
             });
+
+            // --- CORRECTION ICI AUSSI ---
+            if (!response.ok) {
+                console.error("Erreur action:", response.status);
+                // On force un rechargement pour réactiver les boutons
+                loadPlayers();
+                return;
+            }
+
             const data = await response.json();
-            if (response.ok) updateGameStateLocally(data);
+            updateGameStateLocally(data);
         } catch (e) {
             console.error(e);
             // En cas d'erreur, on force un rechargement pour réactiver les boutons
@@ -228,8 +248,6 @@
         dealerIndex = data.dealerIndex;
         let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
 
-        // CORRECTION MAJEURE : On réinitialise d'abord les joueurs pour éviter les "fantômes"
-        // Si le serveur renvoie 1 joueur, le 2ème slot doit être effacé.
         for(let j=0; j<nPlayers; j++) {
             if(playerData[j]) playerData[j].active = false;
         }
@@ -253,11 +271,9 @@
             }
         });
 
-        // Si on n'est plus dans la liste des joueurs, c'est qu'on a perdu et été kické
         if(amISeated && !foundMe) {
             amISeated = false;
             resetGameState();
-            // On force l'affichage du bouton rejoindre
             initButtons();
         } else {
             amISeated = foundMe;
