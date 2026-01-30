@@ -93,12 +93,29 @@ class GameController extends Controller
             return $this->gameResponse($game, $pokerService);
         }
 
-        if ($request->action === 'fold') {
+        $action = $request->action;
+        $amount = (int)$request->amount;
+
+        if ($action === 'fold') {
             $this->handleFold($game, $players);
-            return $this->gameResponse($game->fresh(), $pokerService);
+        }
+        elseif ($action === 'call' || $action === 'check') {
+            $opp = $players->firstWhere('id', '!=', $me->id);
+            $needed = $opp ? max(0, $opp->current_bet - $me->current_bet) : 0;
+            $toPay = min($me->chips, $needed);
+
+            $me->decrement('chips', $toPay);
+            $me->increment('current_bet', $toPay);
+        }
+        elseif ($action === 'raise' || $action === 'allin') {
+            $totalAdded = $amount - $me->current_bet;
+            if ($totalAdded > 0 && $me->chips >= $totalAdded) {
+                $me->decrement('chips', $totalAdded);
+                $me->update(['current_bet' => $amount]);
+            }
         }
 
-        $this->processTurnAction($game, $pokerService);
+        $this->processTurnAction($game->fresh(), $pokerService);
         return $this->gameResponse($game->fresh(), $pokerService);
     }
 
@@ -295,16 +312,11 @@ class GameController extends Controller
 
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
-
-        // FIX: Nettoyage des anciennes sessions orphelines du même joueur avant de rejoindre
         Player::where('session_token', session('player_token'))->delete();
-
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
-
         $token = Str::random(32);
         $game->players()->create(['name' => $request->name, 'chips' => 1000, 'session_token' => $token]);
         session(['player_token' => $token]);
-
         return response()->json(['message' => 'Success']);
     }
 
