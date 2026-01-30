@@ -116,7 +116,7 @@
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
         // Initialisation musique au premier clic
-        document.addEventListener("pointerdown", startElevatorMusic, { once: true });
+        document.addEventListener("pointerdown", () => { if(typeof startElevatorMusic === 'function') startElevatorMusic(); }, { once: true });
         resetGameState();
         createLogoutButton();
         loadPlayers().then(() => {
@@ -167,13 +167,6 @@
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
 
-            let stillInGame = data.players.some(p => p.is_me);
-            if (amISeated && !stillInGame) {
-                amISeated = false;
-                resetGameState();
-                initButtons();
-                return;
-            }
             updateGameStateLocally(data);
         } catch(e) { console.error("Sync Error:", e); }
     }
@@ -211,8 +204,11 @@
             });
             const data = await response.json();
             if (response.ok) updateGameStateLocally(data);
-            else loadPlayers();
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error(e);
+            // En cas d'erreur, on force un rechargement pour réactiver les boutons
+            loadPlayers();
+        }
     }
 
     function updateGameStateLocally(data) {
@@ -231,6 +227,12 @@
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
         let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
+
+        // CORRECTION MAJEURE : On réinitialise d'abord les joueurs pour éviter les "fantômes"
+        // Si le serveur renvoie 1 joueur, le 2ème slot doit être effacé.
+        for(let j=0; j<nPlayers; j++) {
+            if(playerData[j]) playerData[j].active = false;
+        }
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
@@ -251,7 +253,16 @@
             }
         });
 
-        amISeated = foundMe;
+        // Si on n'est plus dans la liste des joueurs, c'est qu'on a perdu et été kické
+        if(amISeated && !foundMe) {
+            amISeated = false;
+            resetGameState();
+            // On force l'affichage du bouton rejoindre
+            initButtons();
+        } else {
+            amISeated = foundMe;
+        }
+
         updateUI();
 
         let betRange = document.getElementById('bet-range');
@@ -325,9 +336,11 @@
 
         let rx = tableW*0.48, ry = tableH*0.45;
         for(let i=0; i<nPlayers; i++){
-            let angle = -Math.PI/2 + i*Math.PI;
-            let x = cx + rx*Math.cos(angle); let y = cy + ry*Math.sin(angle);
+            // On ne dessine que si le joueur est ACTIF (éviter les fantômes)
             if(playerData[i] && playerData[i].active){
+                let angle = -Math.PI/2 + i*Math.PI;
+                let x = cx + rx*Math.cos(angle); let y = cy + ry*Math.sin(angle);
+
                 if (currentStatus === 'showdown' && playerData[i].chips > previousChips[i]) {
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
