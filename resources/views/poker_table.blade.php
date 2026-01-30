@@ -116,7 +116,7 @@
         let canvas = createCanvas(windowWidth, windowHeight);
         canvas.parent("p5-zone");
         // Initialisation musique au premier clic
-        document.addEventListener("pointerdown", () => { if(typeof startElevatorMusic === 'function') startElevatorMusic(); }, { once: true });
+        document.addEventListener("pointerdown", startElevatorMusic, { once: true });
         resetGameState();
         createLogoutButton();
         loadPlayers().then(() => {
@@ -153,18 +153,9 @@
         }
     }
 
-    // --- CORRECTION MAJEURE ICI ---
     async function loadPlayers(){
         try {
             const res = await fetch("/game");
-
-            // Vérifie si la requête a réussi (code 200)
-            if (!res.ok) {
-                console.warn("Erreur serveur sur /game :", res.status);
-                // On arrête ici pour ne pas provoquer d'erreur de parsing JSON
-                return;
-            }
-
             const data = await res.json();
 
             // Detection changement de tour pour son notif
@@ -176,10 +167,15 @@
                 playerData.forEach((p, i) => { if(p.active) previousChips[i] = p.chips; });
             }
 
+            let stillInGame = data.players.some(p => p.is_me);
+            if (amISeated && !stillInGame) {
+                amISeated = false;
+                resetGameState();
+                initButtons();
+                return;
+            }
             updateGameStateLocally(data);
-        } catch(e) {
-            console.error("Sync Error:", e);
-        }
+        } catch(e) { console.error("Sync Error:", e); }
     }
 
     function updateUI() {
@@ -213,22 +209,10 @@
                 headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content },
                 body: JSON.stringify({ action: action, amount: amount })
             });
-
-            // --- CORRECTION ICI AUSSI ---
-            if (!response.ok) {
-                console.error("Erreur action:", response.status);
-                // On force un rechargement pour réactiver les boutons
-                loadPlayers();
-                return;
-            }
-
             const data = await response.json();
-            updateGameStateLocally(data);
-        } catch (e) {
-            console.error(e);
-            // En cas d'erreur, on force un rechargement pour réactiver les boutons
-            loadPlayers();
-        }
+            if (response.ok) updateGameStateLocally(data);
+            else loadPlayers();
+        } catch (e) { console.error(e); }
     }
 
     function updateGameStateLocally(data) {
@@ -247,10 +231,6 @@
         pot = data.pot || 0;
         dealerIndex = data.dealerIndex;
         let myBet = 0, otherMaxBet = 0, foundMe = false, myChips = 0, isItMyTurn = false;
-
-        for(let j=0; j<nPlayers; j++) {
-            if(playerData[j]) playerData[j].active = false;
-        }
 
         data.players.forEach((p, i) => {
             if(i < nPlayers){
@@ -271,14 +251,7 @@
             }
         });
 
-        if(amISeated && !foundMe) {
-            amISeated = false;
-            resetGameState();
-            initButtons();
-        } else {
-            amISeated = foundMe;
-        }
-
+        amISeated = foundMe;
         updateUI();
 
         let betRange = document.getElementById('bet-range');
@@ -352,11 +325,9 @@
 
         let rx = tableW*0.48, ry = tableH*0.45;
         for(let i=0; i<nPlayers; i++){
-            // On ne dessine que si le joueur est ACTIF (éviter les fantômes)
+            let angle = -Math.PI/2 + i*Math.PI;
+            let x = cx + rx*Math.cos(angle); let y = cy + ry*Math.sin(angle);
             if(playerData[i] && playerData[i].active){
-                let angle = -Math.PI/2 + i*Math.PI;
-                let x = cx + rx*Math.cos(angle); let y = cy + ry*Math.sin(angle);
-
                 if (currentStatus === 'showdown' && playerData[i].chips > previousChips[i]) {
                     push(); fill("#FFD700"); noStroke(); textAlign(CENTER); textSize(22); textStyle(BOLD);
                     let bounce = sin(frameCount * 0.1) * 10;
