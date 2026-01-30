@@ -10,6 +10,7 @@ class Game extends Model
         'status',
         'timer_at',
         'current_turn',
+        'dealer_index',
         'deck',
         'pot',
         'community_cards'

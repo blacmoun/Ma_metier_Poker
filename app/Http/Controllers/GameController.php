@@ -1,3 +1,4 @@
+
 <?php
 
 namespace App\Http\Controllers;
@@ -62,8 +63,7 @@ class GameController extends Controller
             $game = Game::create(['status' => 'waiting', 'community_cards' => [], 'dealer_index' => rand(0, 1), 'pot' => 0]);
         }
 
-        // FIX: ->values() assure que les clés sont bien 0 et 1
-        $players = $game->players()->orderBy('id', 'asc')->get()->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         $count = $players->count();
 
         if ($count < 2 && $game->status !== 'waiting') {
@@ -87,20 +87,13 @@ class GameController extends Controller
 
     public function play(Request $request, PokerService $pokerService) {
         $game = Game::with('players')->first();
-        // FIX: ->values() est crucial ici pour que l'index corresponde au current_turn
-        $players = $game->players()->orderBy('id', 'asc')->get()->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
 
-        $token = session('player_token');
-        if (!$token) {
-            return response()->json(['error' => 'No session'], 401);
-        }
+        // Sécurité : On vérifie l'existence du joueur via sa session
+        $me = $players->firstWhere('session_token', session('player_token'));
 
-        $me = $players->firstWhere('session_token', $token);
-
-        // Sécurité renforcée pour déterminer le tour
+        // Correction : On s'assure que l'index current_turn correspond bien à la position dans la collection $players
         $currentIndex = (int)$game->current_turn;
-
-        // On vérifie que le joueur existe, qu'il y a un joueur à l'index du tour, et que c'est bien lui
         $isMyTurn = ($me && isset($players[$currentIndex]) && $players[$currentIndex]->id === $me->id);
 
         if (!$isMyTurn || $game->status === 'showdown') {
@@ -135,16 +128,8 @@ class GameController extends Controller
 
     private function handleFold($game, $players) {
         if ($players->count() < 2) return;
-        // FIX: ->values() implicite car passé par référence depuis play() ou processTurnAction()
 
-        // Si c'est le tour de 0, le gagnant est 1, et vice versa
-        $winnerIndex = ($game->current_turn == 0) ? 1 : 0;
-
-        // Sécurité si l'index n'existe pas
-        if (!isset($players[$winnerIndex])) return;
-
-        $winner = $players[$winnerIndex];
-
+        $winner = ($game->current_turn == 0) ? $players[1] : $players[0];
         $p1 = $players[0];
         $p2 = $players[1];
 
@@ -152,7 +137,6 @@ class GameController extends Controller
         $deadMoney = $game->pot + ($callAmount * 2);
         $winner->increment('chips', $deadMoney);
 
-        // Remboursement des excédents de mise
         if ($p1->current_bet > $p2->current_bet) $p1->increment('chips', $p1->current_bet - $p2->current_bet);
         if ($p2->current_bet > $p1->current_bet) $p2->increment('chips', $p2->current_bet - $p1->current_bet);
 
@@ -161,7 +145,7 @@ class GameController extends Controller
     }
 
     public function processTurnAction($game, $pokerService) {
-        $players = $game->players()->orderBy('id', 'asc')->get()->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         if ($players->count() < 2) return;
 
         $p1 = $players[0];
@@ -193,6 +177,7 @@ class GameController extends Controller
         if ($isPhaseOver || in_array($game->status, ['showdown', 'countdown'])) {
             $this->advanceGameState($game, $pokerService);
         } else {
+            // Alternance stricte entre 0 et 1 pour la liste des joueurs
             $nextTurn = ($game->current_turn == 0) ? 1 : 0;
             $game->update([
                 'current_turn' => $nextTurn,
@@ -203,15 +188,12 @@ class GameController extends Controller
 
     private function advanceGameState($game, $pokerService) {
         $now = Carbon::now();
-        $players = $game->players()->orderBy('id', 'asc')->get()->values();
+        $players = $game->players()->orderBy('id', 'asc')->get();
         if ($players->count() < 2) return;
 
         $p1 = $players[0]; $p2 = $players[1];
+        $deck = $game->deck ?? [];
 
-        // FIX: S'assurer que le deck est un tableau, même s'il arrive de la DB en string
-        $deck = is_array($game->deck) ? $game->deck : json_decode($game->deck, true) ?? [];
-
-        // Gestion All-in inégale
         if ($p1->chips == 0 || $p2->chips == 0) {
             if ($p1->current_bet != $p2->current_bet) {
                 $minBet = min($p1->current_bet, $p2->current_bet);
@@ -235,16 +217,15 @@ class GameController extends Controller
                 $newDeck = $pokerService->createDeck();
                 $p1_bet = ($game->dealer_index == 0) ? 20 : 40;
                 $p2_bet = ($game->dealer_index == 1) ? 20 : 40;
-
                 $p1->update(['current_bet' => $p1_bet, 'chips' => max(0, $p1->chips - $p1_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
                 $p2->update(['current_bet' => $p2_bet, 'chips' => max(0, $p2->chips - $p2_bet), 'hand' => $pokerService->deal($newDeck, 2)]);
 
                 $game->update([
                     'status' => 'pre-flop',
-                    'deck' => $newDeck, // Laravel gère le JSON ici si configuré
+                    'deck' => $newDeck,
                     'community_cards' => [],
                     'timer_at' => $now->addSeconds($this->turnDuration),
-                    'current_turn' => (int)$game->dealer_index,
+                    'current_turn' => $game->dealer_index,
                     'pot' => 0
                 ]);
                 break;
@@ -257,13 +238,10 @@ class GameController extends Controller
                 $cardsToDeal = ($game->status === 'pre-flop') ? 3 : 1;
                 $nextToAct = ($game->dealer_index == 0) ? 1 : 0;
 
-                // FIX: On récupère les cartes et on met à jour le deck localement
-                $newCards = $pokerService->deal($deck, $cardsToDeal);
-
                 $game->update([
                     'status' => $nextStatus,
-                    'community_cards' => array_merge($game->community_cards ?? [], $newCards),
-                    'deck' => $deck, // Le deck a été modifié par référence dans deal()
+                    'community_cards' => array_merge($game->community_cards ?? [], $pokerService->deal($deck, $cardsToDeal)),
+                    'deck' => $deck,
                     'timer_at' => $now->addSeconds($duration),
                     'current_turn' => $nextToAct
                 ]);
@@ -271,7 +249,6 @@ class GameController extends Controller
 
             case 'river':
                 $this->collectBets($game);
-                // On rafraîchit les joueurs pour avoir le pot à jour
                 $p1S = $pokerService->evaluateHand($p1->hand, $game->community_cards);
                 $p2S = $pokerService->evaluateHand($p2->hand, $game->community_cards);
 
@@ -309,8 +286,7 @@ class GameController extends Controller
     }
 
     public function gameResponse($game, $pokerService = null) {
-        // FIX: ->values() ici aussi pour la consistance de l'API
-        $p = $game->players()->orderBy('id', 'asc')->get()->values();
+        $p = $game->players()->orderBy('id', 'asc')->get();
         $isLocked = ($p->count() === 2 && ($p[0]->chips == 0 || $p[1]->chips == 0) && ($p[0]->current_bet === $p[1]->current_bet || ($p[0]->chips == 0 && $p[0]->current_bet <= $p[1]->current_bet) || ($p[1]->chips == 0 && $p[1]->current_bet <= $p[0]->current_bet)) && !in_array($game->status, ['showdown', 'waiting', 'countdown']));
 
         return response()->json([
@@ -345,29 +321,11 @@ class GameController extends Controller
 
     public function join(Request $request) {
         $game = Game::firstOrCreate([], ['status' => 'waiting', 'pot' => 0, 'dealer_index' => rand(0, 1)]);
-
-        // FIX MAJOR: On vérifie si la session existe DÉJÀ dans la partie avant de tout supprimer
-        // Cela permet de rafraîchir la page sans perdre sa place, ses cartes ou ses jetons.
-        $existingPlayer = Player::where('session_token', session('player_token'))->first();
-        if ($existingPlayer && $existingPlayer->game_id === $game->id) {
-            return response()->json(['message' => 'Already joined']);
-        }
-
-        // Si c'est un nouveau joueur ou une session invalide, on nettoie
-        if (session('player_token')) {
-            Player::where('session_token', session('player_token'))->delete();
-        }
-
+        Player::where('session_token', session('player_token'))->delete();
         if ($game->players()->count() >= 2) return response()->json(['error' => 'Full'], 403);
-
         $token = Str::random(32);
-        // On crée le joueur avec une nouvelle session
         $game->players()->create(['name' => $request->name, 'chips' => 1000, 'session_token' => $token]);
-
-        // On met à jour la session Laravel
         session(['player_token' => $token]);
-        session()->save(); // Force la sauvegarde explicite
-
         return response()->json(['message' => 'Success']);
     }
 
