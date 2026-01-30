@@ -62,5 +62,3 @@ function playFX(name) {
     s.currentTime = 0;
     s.play().catch(() => {});
 }
-
-updateMusic(playerData, nPlayers);
